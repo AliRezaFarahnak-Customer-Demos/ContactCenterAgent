@@ -69,7 +69,7 @@ function displayValue(
 }
 
 function barColor(cat: { color: string }) {
-  // Norlys red accent for the strongest categories; everything else neutral
+  // Brand red accent for the strongest categories; everything else neutral
   return "bg-[#ED0812]";
 }
 

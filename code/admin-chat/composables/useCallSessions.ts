@@ -30,7 +30,7 @@ export interface CallSession {
 }
 
 export function useCallSessions() {
-  const sessions = useState<CallSession[]>("norlys-call-sessions", () => []);
+  const sessions = useState<CallSession[]>("call-sessions", () => []);
 
   function findById(contextId: string): CallSession | undefined {
     return sessions.value.find((s) => s.contextId === contextId);

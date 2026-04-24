@@ -414,7 +414,7 @@ Vær empatisk hvis kunden er overrasket over beløbet.";
 
     /// <summary>
     /// Shared helper: builds the persona + MFA system prompt and POSTs to the caller agent.
-    /// Keeps the same prompt structure as <c>server/api/norlys-call.post.ts</c>.
+    /// Keeps the same prompt structure as <c>server/api/place-call.post.ts</c>.
     /// </summary>
     private static async Task<PhoneCallResult> PlacePersonaCall(
         string personaLabel,

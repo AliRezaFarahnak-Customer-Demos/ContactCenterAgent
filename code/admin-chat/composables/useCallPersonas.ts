@@ -1,12 +1,12 @@
 /**
- * Built-in Norlys personas for the call composer.
+ * Built-in call personas for the call composer.
  * Each persona is a system-prompt template (in Danish) that drives
  * the AI caller's behaviour. The caller-agent appends its own core
- * phone-call rules on top of this string, and our /api/norlys-call
+ * phone-call rules on top of this string, and our /api/place-call
  * route prepends mandatory MFA verification instructions.
  */
 
-export interface NorlysPersona {
+export interface CallPersona {
   id: string;
   label: string;
   emoji: string;
@@ -21,7 +21,7 @@ export interface NorlysPersona {
   languageCode: string;
 }
 
-export const NORLYS_PERSONAS: NorlysPersona[] = [
+export const CALL_PERSONAS: CallPersona[] = [
   {
     id: "onboarding",
     label: "Onboarding & modem-installation",
@@ -74,6 +74,6 @@ Email: kunde@example.dk`,
   },
 ];
 
-export function getPersona(id: string): NorlysPersona | undefined {
-  return NORLYS_PERSONAS.find((p) => p.id === id);
+export function getPersona(id: string): CallPersona | undefined {
+  return CALL_PERSONAS.find((p) => p.id === id);
 }

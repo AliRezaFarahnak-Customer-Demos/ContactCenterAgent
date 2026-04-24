@@ -54,7 +54,7 @@ watch(isLoading, async (loading) => {
 });
 
 // ---------------------------------------------------------------------------
-// Place a Norlys persona call via the form
+// Place a call via the form
 // ---------------------------------------------------------------------------
 async function startCallFromComposer(payload: {
   personaId: string;
@@ -75,7 +75,7 @@ async function startCallFromComposer(payload: {
       contextId?: string;
       phoneNumber?: string;
       error?: string;
-    }>("/api/norlys-call", {
+    }>("/api/place-call", {
       method: "POST",
       body: payload,
     });

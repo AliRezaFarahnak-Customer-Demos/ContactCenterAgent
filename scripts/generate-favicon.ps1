@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# Generates a red-themed favicon (white phone glyph on Norlys-red rounded square).
+# Generates a red-themed favicon (white phone glyph on brand-red rounded square).
 Add-Type -AssemblyName System.Drawing
 
 $red = [System.Drawing.Color]::FromArgb(237, 8, 18)

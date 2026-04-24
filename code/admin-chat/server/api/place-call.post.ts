@@ -1,6 +1,6 @@
 /**
- * POST /api/norlys-call
- * Builds a Norlys persona-aware system prompt with MFA verification rules,
+ * POST /api/place-call
+ * Builds a persona-aware system prompt with MFA verification rules,
  * then proxies an outbound call request to the caller agent.
  *
  * Request body:

@@ -27,7 +27,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: "CallCenter Demo",
+      title: "CallCenter — AI-drevet kundeservice",
       meta: [
         {
           name: "description",
@@ -35,11 +35,14 @@ export default defineNuxtConfig({
             "AI-drevet kundeservice — onboarding, regningsforklaring og MFA-verifikation.",
         },
         // Open Graph — social sharing (LinkedIn, Twitter, etc.)
-        { property: "og:title", content: "CallCenter Demo" },
+        {
+          property: "og:title",
+          content: "CallCenter — AI-drevet kundeservice",
+        },
         {
           property: "og:description",
           content:
-            "Orchestrate AI callers, track outcomes \u2014 or just call a friend.",
+            "Onboarding, regningsforklaring og MFA — op til 10 AI-opkald i parallel.",
         },
         { property: "og:type", content: "website" },
         ...(siteUrl ? [{ property: "og:url", content: siteUrl }] : []),
@@ -52,21 +55,25 @@ export default defineNuxtConfig({
         { property: "og:image:height", content: "630" },
         {
           property: "og:image:alt",
-          content:
-            "AI Call Center \u2014 Orchestrate AI callers, track outcomes",
+          content: "CallCenter \u2014 AI-drevet kundeservice",
         },
         // Twitter / X card
         { name: "twitter:card", content: "summary_large_image" },
-        { name: "twitter:title", content: "AI Call Center" },
+        {
+          name: "twitter:title",
+          content: "CallCenter — AI-drevet kundeservice",
+        },
         {
           name: "twitter:description",
           content:
-            "Orchestrate AI callers, track outcomes \u2014 or just call a friend.",
+            "Onboarding, regningsforklaring og MFA — op til 10 AI-opkald i parallel.",
         },
         {
           name: "twitter:image",
           content: `${siteUrl}/og-image.png`,
         },
+        // Theme color for mobile browsers
+        { name: "theme-color", content: "#ED0812" },
       ],
       viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
       link: [
@@ -76,6 +83,11 @@ export default defineNuxtConfig({
           type: "image/png",
           sizes: "48x48",
           href: "/favicon.png",
+        },
+        {
+          rel: "apple-touch-icon",
+          sizes: "180x180",
+          href: "/apple-touch-icon.png",
         },
       ],
     },

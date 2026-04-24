@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NORLYS_PERSONAS, getPersona } from "~/composables/useNorlysPersonas";
+import { CALL_PERSONAS, getPersona } from "~/composables/useCallPersonas";
 
 const emit = defineEmits<{
   call: [
@@ -18,10 +18,8 @@ const emit = defineEmits<{
   ];
 }>();
 
-const personaId = ref(NORLYS_PERSONAS[0].id);
-const persona = computed(
-  () => getPersona(personaId.value) ?? NORLYS_PERSONAS[0],
-);
+const personaId = ref(CALL_PERSONAS[0].id);
+const persona = computed(() => getPersona(personaId.value) ?? CALL_PERSONAS[0]);
 
 const customerName = ref("Mette Hansen");
 const countryCode = ref("45");
@@ -115,7 +113,7 @@ async function startCall() {
         >
         <div class="mt-1.5 grid gap-2">
           <button
-            v-for="p in NORLYS_PERSONAS"
+            v-for="p in CALL_PERSONAS"
             :key="p.id"
             type="button"
             class="text-left px-3 py-2.5 rounded-lg border transition-all"
@@ -163,7 +161,7 @@ async function startCall() {
           <!-- Animated hint when empty -->
           <span
             v-if="!phoneNumber.trim()"
-            class="inline-flex items-center gap-1 text-[10px] font-semibold text-[#ED0812] norlys-arrow-bounce"
+            class="inline-flex items-center gap-1 text-[10px] font-semibold text-[#ED0812] cc-arrow-bounce"
           >
             Indtast nummer
             <svg
@@ -199,7 +197,7 @@ async function startCall() {
             class="flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:border-[#ED0812] focus:ring-1 focus:ring-[#ED0812]/30 font-mono transition-shadow"
             :class="
               !phoneNumber.trim()
-                ? 'border-[#ED0812]/50 ring-2 ring-[#ED0812]/15 norlys-input-pulse'
+                ? 'border-[#ED0812]/50 ring-2 ring-[#ED0812]/15 cc-input-pulse'
                 : 'border-zinc-200'
             "
           />

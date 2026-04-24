@@ -181,6 +181,22 @@ infra → build (2 parallel runners: admin-chat + caller-agent) → deploy
 - **Local-first workflow:** Always run and test changes locally before deploying to Azure.
 - **Local `azd up` is allowed** — use it freely for fast iteration. The GitHub Action is still the canonical CI/CD path for `main`.
 
+### Build & Deploy Rules
+
+- **NEVER build Docker images locally.** The dev machine is **Snapdragon (ARM64)** — local `docker build` produces wrong-arch images that won't run on Azure Container Apps (linux/amd64).
+- **Always use the remote builder:**
+  - Preferred: `azd deploy <service>` (uses ACR Tasks under the hood)
+  - Fallback: `az acr build --registry crcontactcenteragent --image <repo>:<tag> --file Dockerfile <build-args> .`
+- For local code-only validation (no Docker), use `npm run build` in `code/admin-chat/` or `dotnet build` in the agent folder.
+- **Required azd version: ≥ 1.24.1.** azd `1.23.6` has a known bug where it polls an ACR build-log blob before it exists, errors with `BlobNotFound 404`, and aborts — even though the ACR build itself succeeded and the image was pushed.
+- **Recovery if `azd deploy` fails with `BlobNotFound`:** the image is almost certainly already in ACR. Verify and bump the Container App manually:
+  ```pwsh
+  az acr task list-runs -r crcontactcenteragent --top 5 -o table
+  # Find the most recent Succeeded run + its image tag (e.g. azd-deploy-1777029098), then:
+  az containerapp update -n ca-admin-chat -g rg-contactcenteragent `
+    --image crcontactcenteragent.azurecr.io/contactcenteragent/admin-chat-demo:<tag>
+  ```
+
 ### Services
 
 | Service            | Status     | Runtime | Purpose                                                                                    |
