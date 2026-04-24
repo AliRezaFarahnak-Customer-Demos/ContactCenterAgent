@@ -1,6 +1,6 @@
 # Contact Center Agent — Copilot Instructions
 
-> **Never run `azd up` locally** — the GitHub Action handles all deployments.
+> **`azd up` is allowed locally.** You may run `azd up`, `azd deploy`, and `azd provision` directly from the dev machine. The GitHub Action remains the canonical CI/CD path, but local deploys are fine for fast iteration.
 >
 > **Custom domain**: managed via the registrar control panel at `<your-domain-registrar-control-panel>` (Playwright can drive the UI when needed).
 
@@ -179,8 +179,7 @@ infra → build (2 parallel runners: admin-chat + caller-agent) → deploy
 ## Development Rules
 
 - **Local-first workflow:** Always run and test changes locally before deploying to Azure.
-- Only deploy to Azure via GitHub Actions after the user has reviewed and approved the local version.
-- **Never run `azd up` locally** — the GitHub Action handles all deployments.
+- **Local `azd up` is allowed** — use it freely for fast iteration. The GitHub Action is still the canonical CI/CD path for `main`.
 
 ### Services
 
