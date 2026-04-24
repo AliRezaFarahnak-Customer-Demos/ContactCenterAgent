@@ -402,7 +402,14 @@ App Insights telemetry uses the `APPLICATIONINSIGHTS_CONNECTION_STRING` env var 
 ## Social Sharing & Favicon
 
 - **OG image**: `public/og-image.png` (1200×630, resized from `assets/icons/octopuswide.png`)
-- **Favicon**: `public/favicon.ico` (multi-size 16/32/48) + `public/favicon.png` (48×48), generated from `assets/icons/octopus.png`
+- **Favicon**: Official Norlys "Brand O" favicon from norlys.design (CVI package):
+  - `public/favicon.ico` — multi-size ICO (15 KB)
+  - `public/favicon-16x16.png` — 16×16 PNG
+  - `public/favicon-32x32.png` — 32×32 PNG
+  - `public/apple-touch-icon.png` — 180×180 Apple touch icon
+  - `public/android-chrome-192x192.png` — 192×192 Android/PWA
+  - `public/android-chrome-512x512.png` — 512×512 Android/PWA
+- **Do NOT** replace these with custom icons — they are the official CVI favicon set.
 - **Absolute URLs**: `og:image` and `twitter:image` require absolute URLs. The site URL is injected at Docker build time via the `NUXT_PUBLIC_SITE_URL` build arg (set in `deploy.yml`). Locally it falls back to a relative path.
 - **Source assets**: `assets/icons/octopus.png` (1024×1024) and `assets/icons/octopuswide.png` (1536×1024) are the source files. Regenerate `public/` assets from these if changed.
 
@@ -515,9 +522,115 @@ az monitor app-insights query -a $APP_ID --analytics-query "
 
 ---
 
-## Known Pitfalls & Debugging Learnings
+## Norlys Branding (admin-chat frontend)
 
-Hard-earned lessons from debugging sessions — **read before making changes**.
+Norlys has granted permission to use their CVI for this project. The admin-chat
+UI follows the Norlys 2025 design system. Read these guidelines **before**
+editing anything visual in `code/admin-chat/`.
+
+### Reference links (Norlys Design 2025)
+
+| Topic                       | URL                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| Hub                         | https://norlys.design/                                                       |
+| Visuel identitet (overview) | https://norlys.design/document/307                                           |
+| Logo                        | https://norlys.design/document/307#/grundelementer/logo                      |
+| Farver (colors)             | https://norlys.design/document/307#/grundelementer/farver                    |
+| Typografi                   | https://norlys.design/document/307#/grundelementer/typografi                 |
+| Ikonografi                  | https://norlys.design/document/307#/grundelementer/ikonografi                |
+| Digital design              | https://norlys.design/document/332                                           |
+| Sidestruktur og layout      | https://norlys.design/document/332#/indhold-og-layout/sidestruktur-og-layout |
+| Content blokke              | https://norlys.design/document/332#/indhold-og-layout/content-blokke         |
+
+### Brand assets in this repo
+
+- Source `.ai`, `.svg`, `.png` logo files: [For_web/](For_web/)
+- Logos served by Nuxt (already deployed):
+  - [code/admin-chat/public/norlys-logo.svg](code/admin-chat/public/norlys-logo.svg) — Norlys Red on light surfaces (use on Sand, Light Petroleum, white)
+  - [code/admin-chat/public/norlys-logo-neg.svg](code/admin-chat/public/norlys-logo-neg.svg) — negative/Sand on dark surfaces (use on Norlys Red, Dark Petroleum, dark imagery)
+
+### Color tokens (registered in [tailwind.config.ts](code/admin-chat/tailwind.config.ts))
+
+Use the `norlys-*` Tailwind tokens — never hardcode hex.
+
+| Token                    | Hex                   | Use                                                   |
+| ------------------------ | --------------------- | ----------------------------------------------------- |
+| `norlys-red`             | `#ed0812`             | Primary brand. Logo, primary CTA, splash, focus ring  |
+| `norlys-red-2`           | `#d80812`             | Hover/active darker red                               |
+| `norlys-red-3`           | `#c10000`             | Pressed state, high-contrast red                      |
+| `norlys-petroleum`       | `#0c4c4e`             | Headlines on light, secondary buttons, icons          |
+| `norlys-petroleum-2`     | `#004547`             | Hover petroleum                                       |
+| `norlys-petroleum-3`     | `#023a3c`             | Strongest text/headlines on light                     |
+| `norlys-light-petroleum` | `#dbe7e4`             | Borders, dividers, disabled surfaces                  |
+| `norlys-sand`            | `#f4f2ec`             | **Default page background**                           |
+| `norlys-sand-2/3`        | `#ece9e0` / `#e0dbcd` | Alt surfaces, code blocks                             |
+| `norlys-ink` (Warm Grey) | `#413f3c`             | Body text on Sand / Light Petroleum / light imagery   |
+| white (`#ffffff`)        | —                     | Body text on Norlys Red, Dark Petroleum, dark imagery |
+
+**Text-color rule (CVI):** Warm Grey for text on light surfaces; Sand (or white in digital) for text on Norlys Red / Dark Petroleum.
+
+**Primary color usage rule:** Norlys Red must be present in everything we
+make — but never dominate. Use it on the logo, primary CTAs, focus rings, and
+small accents. Avoid red backgrounds on large content areas.
+
+### Typography
+
+Configured in [tailwind.config.ts](code/admin-chat/tailwind.config.ts) and applied globally via [assets/css/main.css](code/admin-chat/assets/css/main.css).
+
+| Use       | Tailwind class  | Stack                                                    | CVI rule                                    |
+| --------- | --------------- | -------------------------------------------------------- | ------------------------------------------- |
+| Headlines | `font-headline` | `"Norlys Headline", Georgia, "Times New Roman", serif`   | **Bold only**, **always left-aligned**      |
+| Body      | `font-body`     | `"Norlys Text", Arial, Helvetica, system-ui, sans-serif` | Regular default; SemiBold/Bold for emphasis |
+
+The proprietary `NORLYSHeadline-Bold.otf` and `NORLYSText-*.otf` files are gated behind login on norlys.design. The stack falls back to Norlys' own published web fallbacks (Georgia for headlines, Arial for body). If licensed `.otf` files are added later, drop them in `code/admin-chat/public/fonts/` and add `@font-face` blocks in `main.css`.
+
+#### Form & input typography (CVI compliance)
+
+The Norlys CVI defines exactly two typefaces — Norlys Headline (serif, bold-only, headlines) and Norlys Text (sans-serif, body). **There is no monospace font in the brand.** Therefore:
+
+- **Never use `font-mono`** on inputs, textareas, phone numbers, code-like content, or any production UI. The only exception is the hidden debug `ActivityPanel` (`v-if="false"`).
+- All `<input>`, `<textarea>`, and `<select>` elements inherit `font-body` from `<body>` — do not override.
+- For aligned digits (phone numbers, scores, counts, timestamps), use **`tabular-nums`** instead of `font-mono`. This keeps the brand sans-serif while making digits the same width.
+- Numeric labels and badges use `tabular-nums` plus the normal body weight.
+
+### Logo placement (CVI)
+
+- Norlys logo always sits in the **top-right corner** OR **bottom-left corner** of a layout.
+- Respect distance: ≥ 1× brand "O" on small formats (≤ A4), 1.5× on larger.
+- Logo width incl. respect distance must never exceed **50%** of the format width.
+- The negative (Sand) logo is for Norlys Red and Dark Petroleum backgrounds; the positive (Red) logo is for Sand, Light Petroleum, and light imagery.
+
+### Digital design principles (https://norlys.design/document/332)
+
+These apply to all admin-chat pages and any future agent UIs:
+
+1. **Mobile-first responsive.** Design and test small screens first; scale up.
+2. **Synligt næste modul.** The top of the next section must be visible above the fold to invite scrolling.
+3. **Less is more.** Avoid dense text/components; use white space for visual rhythm.
+4. **Konvertering & SEO.** Every page needs an obvious CTA and search-engine-friendly markup (semantic HTML, alt text, meta tags).
+5. **Content blocks** (image + headline + 1–2 line body + CTA) tell one story and lead to one action.
+6. **Headlines:** short, max 2 lines, signal the block's message clearly.
+7. **CTAs:** action-oriented, mirror the headline's message ("Bestil elaftale", "Se priser og bestil"). Never generic "Klik her".
+8. **Bullet lists** for scannable info; **bold** for keywords; _italic_ for clarifications — both used sparingly.
+9. **Splash elements** are reserved for price, savings, or a clear advantage. Don't dilute them with general use.
+10. **Mega menu:** max 7 top categories; max 3 sub-headings × 5 links each.
+
+### Accessibility (WCAG, mandatory from June 2025)
+
+The Norlys CVI explicitly commits to WCAG. When adding UI:
+
+- Maintain ≥ 4.5:1 contrast for body text and ≥ 3:1 for large text/icons. Norlys Red on Sand passes; Norlys Red on white passes for text ≥ 18pt; verify any combination with a contrast checker before shipping.
+- All interactive elements need a visible focus ring — use the `norlys-red/20` ring already wired into the chat input as the pattern.
+- All images need `alt` text; decorative images use `alt=""`.
+- All buttons need an accessible name (visible text or `aria-label`).
+- Form fields need real `<label>` elements (not just placeholders).
+- Don't convey state with color alone; pair with text or an icon.
+- Respect `prefers-reduced-motion` for animations.
+
+### Tone of voice (Danish UI)
+
+- Enkelhed, handlekraft, optimisme. Korte sætninger, aktivt sprog.
+- Body copy in Danish. Code, identifiers, and English-language errors stay in English.
 
 ### Azure OpenAI SDK Versions
 
@@ -598,3 +711,19 @@ Hard-earned lessons from debugging sessions — **read before making changes**.
 - Current tunnel: `https://<your-subdomain>-5000.<region>.devtunnels.ms` (maps to localhost:5000)
 - Must be running (`devtunnel host`) before placing calls locally.
 - The tunnel URL is set via `$env:VS_TUNNEL_URL` when starting the caller agent.
+
+Important design guidelines: https://norlys.design
+
+https://norlys.design/document/307#/grundelementer/logo/download-logo
+Visuel identitet - Norlys Design 2025
+A Powerful Brand Powered by Frontify
+
+https://norlys.design/document/307#/grundelementer/typografi
+Visuel identitet - Norlys Design 2025
+A Powerful Brand Powered by Frontify
+
+https://norlys.design/document/307#/grundelementer/farver
+Visuel identitet - Norlys Design 2025
+A Powerful Brand Powered by Frontify
+
+ikon https://norlys.design/document/295

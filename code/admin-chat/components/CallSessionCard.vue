@@ -34,13 +34,13 @@ function statusBadge(s: CallSession["status"]) {
   if (s === "live")
     return {
       text: "Live",
-      classes: "bg-emerald-50 text-emerald-700",
-      dot: "bg-emerald-500 animate-pulse",
+      classes: "bg-norlys-petroleum/10 text-norlys-petroleum-3",
+      dot: "bg-norlys-petroleum animate-pulse",
     };
   return {
     text: "Afsluttet",
-    classes: "bg-zinc-100 text-zinc-500",
-    dot: "bg-zinc-400",
+    classes: "bg-norlys-light-petroleum text-norlys-petroleum",
+    dot: "bg-norlys-petroleum/40",
   };
 }
 
@@ -69,8 +69,8 @@ function displayValue(
 }
 
 function barColor(cat: { color: string }) {
-  // Brand red accent for the strongest categories; everything else neutral
-  return "bg-[#ED0812]";
+  // Brand red accent for category bars
+  return "bg-norlys-red";
 }
 
 const sentiment = computed(() => {
@@ -80,11 +80,11 @@ const sentiment = computed(() => {
 });
 
 function sentimentDotColor(v: number | null) {
-  if (v === null) return "bg-zinc-300";
-  if (v >= 4) return "bg-emerald-500";
-  if (v >= 3) return "bg-lime-500";
+  if (v === null) return "bg-norlys-light-petroleum-3";
+  if (v >= 4) return "bg-norlys-petroleum";
+  if (v >= 3) return "bg-norlys-petroleum/60";
   if (v >= 2) return "bg-amber-500";
-  return "bg-rose-500";
+  return "bg-norlys-red";
 }
 
 // ---------------------------------------------------------------------------
@@ -166,10 +166,10 @@ function summaryClasses(tone: CallSummary["tone"]) {
   switch (tone) {
     case "good":
       return {
-        bg: "bg-emerald-50",
-        border: "border-emerald-200",
-        text: "text-emerald-800",
-        sub: "text-emerald-600",
+        bg: "bg-norlys-petroleum/5",
+        border: "border-norlys-petroleum/20",
+        text: "text-norlys-petroleum-3",
+        sub: "text-norlys-petroleum",
       };
     case "warn":
       return {
@@ -180,17 +180,17 @@ function summaryClasses(tone: CallSummary["tone"]) {
       };
     case "bad":
       return {
-        bg: "bg-rose-50",
-        border: "border-rose-200",
-        text: "text-rose-800",
-        sub: "text-rose-600",
+        bg: "bg-norlys-red/5",
+        border: "border-norlys-red/20",
+        text: "text-norlys-red-3",
+        sub: "text-norlys-red",
       };
     default:
       return {
-        bg: "bg-zinc-50",
-        border: "border-zinc-200",
-        text: "text-zinc-700",
-        sub: "text-zinc-500",
+        bg: "bg-norlys-sand-2",
+        border: "border-norlys-light-petroleum",
+        text: "text-norlys-petroleum-3",
+        sub: "text-norlys-petroleum",
       };
   }
 }
@@ -198,12 +198,14 @@ function summaryClasses(tone: CallSummary["tone"]) {
 
 <template>
   <article
-    class="border border-zinc-200 rounded-xl overflow-hidden bg-white shadow-sm"
+    class="border border-norlys-light-petroleum rounded-xl overflow-hidden bg-white shadow-sm"
   >
     <!-- Header (always visible) -->
     <button
       type="button"
-      class="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 text-left transition-colors"
+      class="w-full flex items-center gap-3 px-4 py-3 hover:bg-norlys-sand-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 focus-visible:ring-inset"
+      :aria-expanded="session.expanded"
+      :aria-label="`Toggle call session details for ${session.customerName}`"
       @click="emit('toggle')"
     >
       <!-- Direction icon -->
@@ -211,8 +213,8 @@ function summaryClasses(tone: CallSummary["tone"]) {
         class="shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
         :class="
           session.direction === 'outbound'
-            ? 'bg-red-50 text-[#ED0812]'
-            : 'bg-emerald-50 text-emerald-600'
+            ? 'bg-norlys-red/10 text-norlys-red'
+            : 'bg-norlys-petroleum/10 text-norlys-petroleum'
         "
       >
         <svg
@@ -224,6 +226,7 @@ function summaryClasses(tone: CallSummary["tone"]) {
           stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
+          aria-hidden="true"
         >
           <path
             d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
@@ -233,19 +236,20 @@ function summaryClasses(tone: CallSummary["tone"]) {
 
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
-          <span class="text-sm font-semibold text-zinc-900 truncate">{{
-            session.customerName
-          }}</span>
-          <span class="text-xs text-zinc-400 font-mono shrink-0">{{
+          <span
+            class="font-headline text-sm font-bold text-norlys-petroleum-3 truncate"
+            >{{ session.customerName }}</span
+          >
+          <span class="text-xs text-norlys-petroleum/60 font-mono shrink-0">{{
             session.phoneNumber
           }}</span>
         </div>
         <div class="flex items-center gap-2 mt-0.5">
-          <span class="text-[11px] text-zinc-500 truncate">{{
+          <span class="text-[11px] text-norlys-ink/70 truncate">{{
             session.personaLabel
           }}</span>
-          <span class="text-[11px] text-zinc-300">•</span>
-          <span class="text-[11px] text-zinc-400">{{
+          <span class="text-[11px] text-norlys-light-petroleum-3">•</span>
+          <span class="text-[11px] text-norlys-petroleum/60">{{
             timeFmt(session.startedAt)
           }}</span>
         </div>
@@ -289,7 +293,7 @@ function summaryClasses(tone: CallSummary["tone"]) {
       <!-- Chevron -->
       <svg
         xmlns="http://www.w3.org/2000/svg"
-        class="shrink-0 w-4 h-4 text-zinc-400 transition-transform"
+        class="shrink-0 w-4 h-4 text-norlys-petroleum/60 transition-transform"
         :class="session.expanded ? 'rotate-180' : ''"
         viewBox="0 0 24 24"
         fill="none"
@@ -297,13 +301,14 @@ function summaryClasses(tone: CallSummary["tone"]) {
         stroke-width="2"
         stroke-linecap="round"
         stroke-linejoin="round"
+        aria-hidden="true"
       >
         <polyline points="6 9 12 15 18 9" />
       </svg>
     </button>
 
     <!-- Expanded body -->
-    <div v-if="session.expanded" class="border-t border-zinc-100">
+    <div v-if="session.expanded" class="border-t border-norlys-light-petroleum">
       <!-- Sentiment headline banner -->
       <div
         v-if="summary"
@@ -362,12 +367,12 @@ function summaryClasses(tone: CallSummary["tone"]) {
       </div>
 
       <div
-        class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-100"
+        class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-norlys-light-petroleum"
       >
         <!-- Transcript -->
         <div class="flex flex-col h-72">
           <div
-            class="px-3 py-2 text-[10px] font-semibold text-zinc-400 uppercase tracking-wide border-b border-zinc-50"
+            class="px-3 py-2 text-[10px] font-semibold text-norlys-petroleum/60 uppercase tracking-wide border-b border-norlys-light-petroleum"
           >
             Transskription
           </div>
@@ -377,7 +382,7 @@ function summaryClasses(tone: CallSummary["tone"]) {
           >
             <div
               v-if="session.transcript.length === 0"
-              class="text-xs text-zinc-400 italic text-center py-6"
+              class="text-xs text-norlys-petroleum/60 italic text-center py-6"
             >
               {{
                 session.status === "ringing"
@@ -395,18 +400,20 @@ function summaryClasses(tone: CallSummary["tone"]) {
                   class="font-semibold"
                   :class="
                     e.speaker === 'ai'
-                      ? 'text-[#ED0812]'
+                      ? 'text-norlys-red'
                       : e.speaker === 'user'
-                        ? 'text-zinc-700'
-                        : 'text-zinc-400'
+                        ? 'text-norlys-petroleum-3'
+                        : 'text-norlys-petroleum/60'
                   "
                   >{{ speakerLabel(e.speaker) }}</span
                 >
-                <span class="text-[10px] text-zinc-400">{{
+                <span class="text-[10px] text-norlys-petroleum/60">{{
                   timeFmt(e.timestamp)
                 }}</span>
               </div>
-              <div class="text-zinc-700 leading-snug pl-0.5">{{ e.text }}</div>
+              <div class="text-norlys-ink leading-snug pl-0.5">
+                {{ e.text }}
+              </div>
             </div>
           </div>
         </div>
@@ -414,12 +421,12 @@ function summaryClasses(tone: CallSummary["tone"]) {
         <!-- Analysis -->
         <div class="flex flex-col h-72">
           <div
-            class="px-3 py-2 text-[10px] font-semibold text-zinc-400 uppercase tracking-wide border-b border-zinc-50 flex items-center justify-between"
+            class="px-3 py-2 text-[10px] font-semibold text-norlys-petroleum/60 uppercase tracking-wide border-b border-norlys-light-petroleum flex items-center justify-between"
           >
             <span>Live analyse</span>
             <span
               v-if="session.analysis"
-              class="text-zinc-300 normal-case font-normal"
+              class="text-norlys-light-petroleum-3 normal-case font-normal"
             >
               {{ session.analysisUpdates }} opdateringer
             </span>
@@ -427,7 +434,7 @@ function summaryClasses(tone: CallSummary["tone"]) {
           <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
             <div
               v-if="!session.analysis"
-              class="text-xs text-zinc-400 italic text-center py-6"
+              class="text-xs text-norlys-petroleum/60 italic text-center py-6"
             >
               Venter på analyse…
             </div>
@@ -437,12 +444,14 @@ function summaryClasses(tone: CallSummary["tone"]) {
                 :key="cat.key"
                 class="flex items-center gap-2"
               >
-                <span class="text-[10px]">{{ cat.icon }}</span>
-                <span class="text-[11px] text-zinc-600 w-32 truncate">{{
+                <span class="text-[10px]" aria-hidden="true">{{
+                  cat.icon
+                }}</span>
+                <span class="text-[11px] text-norlys-ink w-32 truncate">{{
                   cat.label
                 }}</span>
                 <div
-                  class="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden"
+                  class="flex-1 h-1.5 bg-norlys-sand-2 rounded-full overflow-hidden"
                 >
                   <div
                     :class="barColor(cat)"
@@ -451,7 +460,7 @@ function summaryClasses(tone: CallSummary["tone"]) {
                   />
                 </div>
                 <span
-                  class="text-[10px] text-zinc-500 font-mono w-6 text-right"
+                  class="text-[10px] text-norlys-petroleum tabular-nums w-6 text-right"
                 >
                   {{ displayValue(cat, session.analysis[cat.key] as number) }}/5
                 </span>
@@ -463,12 +472,12 @@ function summaryClasses(tone: CallSummary["tone"]) {
 
       <!-- Footer actions -->
       <div
-        class="flex items-center justify-end gap-2 px-3 py-2 border-t border-zinc-100 bg-zinc-50/50"
+        class="flex items-center justify-end gap-2 px-3 py-2 border-t border-norlys-light-petroleum bg-norlys-sand-2/50"
       >
         <button
           v-if="session.status === 'ended'"
           type="button"
-          class="text-[11px] text-zinc-500 hover:text-[#ED0812] px-2 py-1 transition-colors"
+          class="text-[11px] text-norlys-petroleum hover:text-norlys-red px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 rounded"
           @click="emit('remove')"
         >
           Fjern fra liste

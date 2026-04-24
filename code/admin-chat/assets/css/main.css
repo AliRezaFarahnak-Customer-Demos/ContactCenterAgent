@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =========================================================================
+ * Norlys brand tokens (https://norlys.design — used with permission)
+ * Colors and font fallbacks pulled from the public CVI guide:
+ *   /document/307#/grundelementer/farver
+ *   /document/307#/grundelementer/typografi
+ * The proprietary "Norlys Headline" / "Norlys Text" fonts are gated behind
+ * login, so we declare them in the stack but rely on Norlys' own published
+ * web fallbacks (Georgia for headlines, Arial for body).
+ * ========================================================================= */
+:root {
+  --norlys-red: #ed0812;
+  --norlys-red-2: #d80812;
+  --norlys-red-3: #c10000;
+  --norlys-petroleum: #0c4c4e;
+  --norlys-petroleum-2: #004547;
+  --norlys-petroleum-3: #023a3c;
+  --norlys-light-petroleum: #dbe7e4;
+  --norlys-sand: #f4f2ec;
+  --norlys-sand-2: #ece9e0;
+  --norlys-ink: #413f3c; /* Warm Grey */
+
+  --font-headline: "Norlys Headline", Georgia, "Times New Roman", serif;
+  --font-body: "Norlys Text", Arial, Helvetica, system-ui, sans-serif;
+}
+
 /* Hint animations — bounce arrow + pulse ring on empty phone field */
 @keyframes cc-arrow-bounce {
   0%,
@@ -36,6 +61,22 @@ body {
   height: 100dvh;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  font-family: var(--font-body);
+  background-color: var(--norlys-sand);
+  color: var(--norlys-ink);
+}
+
+/* Norlys headlines are always set in the display serif, left-aligned */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-headline {
+  font-family: var(--font-headline);
+  letter-spacing: -0.01em;
+  text-align: left;
 }
 
 /* Hide scrollbars but keep scrolling */
@@ -46,18 +87,19 @@ body {
   display: none;
 }
 
-/* Minimal prose overrides for light theme */
+/* Prose overrides tuned to the Norlys palette */
 .prose {
-  --tw-prose-body: #3f3f46;
-  --tw-prose-headings: #18181b;
-  --tw-prose-bold: #18181b;
-  --tw-prose-links: #2563eb;
-  --tw-prose-code: #7c3aed;
+  --tw-prose-body: var(--norlys-ink);
+  --tw-prose-headings: var(--norlys-petroleum-3);
+  --tw-prose-bold: var(--norlys-petroleum-3);
+  --tw-prose-links: var(--norlys-red);
+  --tw-prose-code: var(--norlys-petroleum);
+  font-family: var(--font-body);
 }
 
 .prose pre {
-  background: #f4f4f5;
-  border: 1px solid #e4e4e7;
+  background: var(--norlys-sand-2);
+  border: 1px solid var(--norlys-light-petroleum);
   border-radius: 0.5rem;
   padding: 0.75rem;
   overflow-x: auto;

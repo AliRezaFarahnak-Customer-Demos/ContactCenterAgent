@@ -78,29 +78,50 @@ async function startCall() {
     }, 800);
   }
 }
+
+// Auto-grow textarea directive: resize element to fit its content.
+function resizeTextarea(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+const vAutosize = {
+  mounted(el: HTMLTextAreaElement) {
+    el.style.overflow = "hidden";
+    el.addEventListener("input", () => resizeTextarea(el));
+    nextTick(() => resizeTextarea(el));
+  },
+  updated(el: HTMLTextAreaElement) {
+    nextTick(() => resizeTextarea(el));
+  },
+};
 </script>
 
 <template>
   <aside
-    class="w-full h-full flex flex-col border-r border-zinc-200 bg-white overflow-hidden"
+    class="w-full h-full flex flex-col border-r border-norlys-light-petroleum bg-white overflow-hidden"
   >
     <!-- Header -->
-    <div class="px-4 py-3 border-b border-zinc-100 flex items-center gap-2">
+    <div
+      class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center gap-2"
+    >
       <svg
         xmlns="http://www.w3.org/2000/svg"
-        class="w-4 h-4 text-[#ED0812]"
+        class="w-4 h-4 text-norlys-red"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
         stroke-width="2"
         stroke-linecap="round"
         stroke-linejoin="round"
+        aria-hidden="true"
       >
         <path
           d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
         />
       </svg>
-      <span class="text-sm font-semibold text-zinc-800">Ny opringning</span>
+      <span class="font-headline text-base font-bold text-norlys-petroleum-3"
+        >Ny opringning</span
+      >
     </div>
 
     <!-- Form -->
@@ -108,7 +129,7 @@ async function startCall() {
       <!-- Persona -->
       <div>
         <label
-          class="text-xs font-semibold text-zinc-500 uppercase tracking-wide"
+          class="text-xs font-semibold text-norlys-petroleum uppercase tracking-wide"
           >Scenarie</label
         >
         <div class="mt-1.5 grid gap-2">
@@ -116,21 +137,22 @@ async function startCall() {
             v-for="p in CALL_PERSONAS"
             :key="p.id"
             type="button"
-            class="text-left px-3 py-2.5 rounded-lg border transition-all"
+            class="text-left px-3 py-2.5 rounded-lg border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40"
             :class="
               personaId === p.id
-                ? 'border-[#ED0812] bg-red-50/60 ring-1 ring-[#ED0812]/20'
-                : 'border-zinc-200 hover:border-zinc-300 bg-white'
+                ? 'border-norlys-red bg-norlys-red/5 ring-1 ring-norlys-red/20'
+                : 'border-norlys-light-petroleum hover:border-norlys-petroleum/40 bg-white'
             "
             @click="personaId = p.id"
           >
             <div class="flex items-center gap-2">
-              <span class="text-base">{{ p.emoji }}</span>
-              <span class="text-sm font-semibold text-zinc-800">{{
-                p.label
-              }}</span>
+              <span class="text-base" aria-hidden="true">{{ p.emoji }}</span>
+              <span
+                class="font-headline text-sm font-bold text-norlys-petroleum-3"
+                >{{ p.label }}</span
+              >
             </div>
-            <p class="text-[11px] text-zinc-500 mt-1 leading-snug">
+            <p class="text-[11px] text-norlys-ink/70 mt-1 leading-snug">
               {{ p.description }}
             </p>
           </button>
@@ -140,14 +162,16 @@ async function startCall() {
       <!-- Customer name -->
       <div>
         <label
-          class="text-xs font-semibold text-zinc-500 uppercase tracking-wide"
+          for="composer-customer-name"
+          class="text-xs font-semibold text-norlys-petroleum uppercase tracking-wide"
           >Kundenavn</label
         >
         <input
+          id="composer-customer-name"
           v-model="customerName"
           type="text"
           placeholder="fx Mette Hansen"
-          class="mt-1.5 w-full px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-[#ED0812] focus:ring-1 focus:ring-[#ED0812]/30"
+          class="mt-1.5 w-full px-3 py-2 text-sm border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30"
         />
       </div>
 
@@ -155,13 +179,14 @@ async function startCall() {
       <div>
         <div class="flex items-center justify-between">
           <label
-            class="text-xs font-semibold text-zinc-500 uppercase tracking-wide"
+            for="composer-phone-number"
+            class="text-xs font-semibold text-norlys-petroleum uppercase tracking-wide"
             >Telefonnummer</label
           >
           <!-- Animated hint when empty -->
           <span
             v-if="!phoneNumber.trim()"
-            class="inline-flex items-center gap-1 text-[10px] font-semibold text-[#ED0812] cc-arrow-bounce"
+            class="inline-flex items-center gap-1 text-[10px] font-semibold text-norlys-red cc-arrow-bounce"
           >
             Indtast nummer
             <svg
@@ -173,6 +198,7 @@ async function startCall() {
               stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
+              aria-hidden="true"
             >
               <line x1="12" y1="5" x2="12" y2="19" />
               <polyline points="19 12 12 19 5 12" />
@@ -181,24 +207,26 @@ async function startCall() {
         </div>
         <div class="mt-1.5 flex gap-2">
           <div
-            class="flex items-center px-2.5 py-2 text-sm border border-zinc-200 rounded-lg bg-zinc-50 text-zinc-600 font-mono"
+            class="flex items-center px-2.5 py-2 text-sm border border-norlys-light-petroleum rounded-lg bg-norlys-sand-2 text-norlys-petroleum tabular-nums"
           >
             +<input
               v-model="countryCode"
               type="text"
               maxlength="3"
+              aria-label="Landekode"
               class="w-7 bg-transparent focus:outline-none"
             />
           </div>
           <input
+            id="composer-phone-number"
             v-model="phoneNumber"
             type="tel"
             placeholder="80 71 90 50"
-            class="flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:border-[#ED0812] focus:ring-1 focus:ring-[#ED0812]/30 font-mono transition-shadow"
+            class="flex-1 px-3 py-2 text-sm border rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 tabular-nums transition-shadow"
             :class="
               !phoneNumber.trim()
-                ? 'border-[#ED0812]/50 ring-2 ring-[#ED0812]/15 cc-input-pulse'
-                : 'border-zinc-200'
+                ? 'border-norlys-red/50 ring-2 ring-norlys-red/15 cc-input-pulse'
+                : 'border-norlys-light-petroleum'
             "
           />
         </div>
@@ -207,17 +235,19 @@ async function startCall() {
       <!-- Verification facts -->
       <div>
         <label
-          class="text-xs font-semibold text-zinc-500 uppercase tracking-wide flex items-center gap-1.5"
+          for="composer-verification"
+          class="text-xs font-semibold text-norlys-petroleum uppercase tracking-wide flex items-center gap-1.5"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="w-3.5 h-3.5 text-[#ED0812]"
+            class="w-3.5 h-3.5 text-norlys-red"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
+            aria-hidden="true"
           >
             <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -225,12 +255,14 @@ async function startCall() {
           MFA — verifikationsfakta
         </label>
         <textarea
+          id="composer-verification"
           v-model="verificationFacts"
+          v-autosize
           rows="3"
           placeholder="Adresse: ...&#10;Email: ...&#10;Fødselsdato: ..."
-          class="mt-1.5 w-full px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-[#ED0812] focus:ring-1 focus:ring-[#ED0812]/30 font-mono resize-none"
+          class="mt-1.5 w-full px-3 py-2 text-sm border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 resize-none"
         ></textarea>
-        <p class="text-[10px] text-zinc-400 mt-1 leading-snug">
+        <p class="text-[10px] text-norlys-petroleum/60 mt-1 leading-snug">
           Agenten stiller spørgsmål baseret på disse fakta før han diskuterer
           noget følsomt.
         </p>
@@ -239,45 +271,50 @@ async function startCall() {
       <!-- Notes -->
       <div>
         <label
-          class="text-xs font-semibold text-zinc-500 uppercase tracking-wide"
+          for="composer-notes"
+          class="text-xs font-semibold text-norlys-petroleum uppercase tracking-wide"
           >Kontekst (valgfrit)</label
         >
         <textarea
+          id="composer-notes"
           v-model="notes"
+          v-autosize
           rows="2"
           placeholder="fx detaljer om kundens ordre, regningsbeløb, ..."
-          class="mt-1.5 w-full px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-[#ED0812] focus:ring-1 focus:ring-[#ED0812]/30 resize-none"
+          class="mt-1.5 w-full px-3 py-2 text-sm border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 resize-none"
         ></textarea>
       </div>
 
       <!-- Advanced — full prompt -->
       <details
-        class="border border-zinc-200 rounded-lg"
+        class="border border-norlys-light-petroleum rounded-lg"
         @toggle="showAdvanced = ($event.target as HTMLDetailsElement).open"
       >
         <summary
-          class="px-3 py-2 text-xs font-semibold text-zinc-500 cursor-pointer select-none uppercase tracking-wide"
+          class="px-3 py-2 text-xs font-semibold text-norlys-petroleum cursor-pointer select-none uppercase tracking-wide"
         >
           Avanceret — instruks-skabelon
         </summary>
         <textarea
           v-model="personaInstructions"
+          v-autosize
           rows="10"
-          class="w-full px-3 py-2 text-xs border-t border-zinc-200 focus:outline-none font-mono resize-none rounded-b-lg"
+          aria-label="Instruks-skabelon"
+          class="w-full px-3 py-2 text-xs border-t border-norlys-light-petroleum bg-white text-norlys-ink focus:outline-none resize-none rounded-b-lg"
         ></textarea>
       </details>
     </div>
 
     <!-- Call button -->
-    <div class="px-4 py-3 border-t border-zinc-100 bg-white">
+    <div class="px-4 py-3 border-t border-norlys-light-petroleum bg-white">
       <button
         type="button"
         :disabled="!canCall"
-        class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full text-white text-sm font-bold transition-all duration-200"
+        class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full text-white font-body text-sm font-bold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         :class="
           canCall
-            ? 'bg-[#ED0812] hover:bg-[#c4060f] active:scale-[0.98] shadow-md'
-            : 'bg-zinc-300 cursor-not-allowed'
+            ? 'bg-norlys-red hover:bg-norlys-red-3 active:scale-[0.98] shadow-md'
+            : 'bg-norlys-light-petroleum-3 cursor-not-allowed'
         "
         @click="startCall"
       >
@@ -290,6 +327,7 @@ async function startCall() {
           stroke-width="2.5"
           stroke-linecap="round"
           stroke-linejoin="round"
+          aria-hidden="true"
         >
           <path
             d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
@@ -297,10 +335,12 @@ async function startCall() {
         </svg>
         {{ isCalling ? "Ringer op…" : "Ring op nu" }}
       </button>
-      <p v-if="lastError" class="mt-2 text-xs text-[#ED0812] text-center">
+      <p v-if="lastError" class="mt-2 text-xs text-norlys-red text-center">
         {{ lastError }}
       </p>
-      <p class="mt-2 text-[10px] text-zinc-400 text-center leading-snug">
+      <p
+        class="mt-2 text-[10px] text-norlys-petroleum/60 text-center leading-snug"
+      >
         Du kan starte flere opkald samtidig — hvert vises som en sektion til
         højre.
       </p>

@@ -28,14 +28,14 @@ const html = computed(() => {
       <!-- Streaming indicator -->
       <span
         v-if="!msg.complete && msg.role === 'assistant'"
-        class="inline-block w-1.5 h-4 bg-zinc-400 animate-pulse rounded-sm ml-0.5"
+        class="inline-block w-1.5 h-4 bg-norlys-petroleum/60 animate-pulse rounded-sm ml-0.5"
       />
     </div>
 
-    <!-- User messages (light gray bubble) -->
+    <!-- User messages (sand bubble) -->
     <div
       v-else
-      class="max-w-[80%] rounded-2xl px-4 py-3 bg-zinc-100 text-zinc-900"
+      class="max-w-[80%] rounded-2xl px-4 py-3 bg-norlys-sand-2 text-norlys-ink"
     >
       {{ msg.content }}
     </div>

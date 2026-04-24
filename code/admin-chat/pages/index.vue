@@ -118,29 +118,31 @@ const activeCount = computed(
 </script>
 
 <template>
-  <div class="flex h-dvh w-screen bg-zinc-50 text-zinc-900">
+  <div class="flex h-dvh w-screen bg-norlys-sand text-norlys-ink font-body">
     <!-- ============== TOP BAR ============== -->
+    <!-- Per Norlys CVI: logo sits in the top-right corner of the layout. -->
     <header
-      class="fixed top-0 inset-x-0 h-12 z-30 bg-white border-b border-zinc-200 flex items-center px-4 gap-4"
+      class="fixed top-0 inset-x-0 h-12 z-30 bg-white border-b border-norlys-light-petroleum flex items-center px-4 gap-4"
     >
-      <div class="flex items-center gap-2">
-        <span
-          class="text-lg font-black tracking-tight text-[#ED0812] leading-none"
-          >CALLCENTER</span
-        >
-        <span
-          class="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider hidden sm:inline"
-          >powered by Azure AI</span
-        >
-      </div>
-      <div class="flex-1" />
+      <!-- Official Norlys logo (Norlys_Logotype_RGB.svg, used with permission) -->
+      <img
+        src="/norlys-logo.svg"
+        alt="Norlys"
+        class="h-6 w-auto select-none"
+        draggable="false"
+      />
       <div
         v-if="activeCount > 0"
-        class="hidden sm:flex items-center gap-1.5 text-xs text-zinc-500"
+        class="hidden sm:flex items-center gap-1.5 text-xs text-norlys-petroleum"
       >
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        <span class="w-1.5 h-1.5 rounded-full bg-norlys-red animate-pulse" />
         {{ activeCount }} aktivt opkald
       </div>
+      <div class="flex-1" />
+      <span
+        class="font-headline text-base font-bold text-norlys-petroleum-3 hidden sm:inline"
+        >CallCenter</span
+      >
     </header>
 
     <!-- ============== LEFT — CALL COMPOSER ============== -->
@@ -165,7 +167,7 @@ const activeCount = computed(
             class="flex flex-col items-center text-center gap-4"
           >
             <div
-              class="w-12 h-12 rounded-full bg-[#ED0812] flex items-center justify-center"
+              class="w-12 h-12 rounded-full bg-norlys-red flex items-center justify-center"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -183,10 +185,12 @@ const activeCount = computed(
               </svg>
             </div>
             <div>
-              <h1 class="text-xl font-semibold text-zinc-900">
+              <h1
+                class="font-headline text-3xl font-bold text-norlys-petroleum-3"
+              >
                 CallCenter Demo
               </h1>
-              <p class="text-sm text-zinc-500 mt-1 max-w-md">
+              <p class="text-sm text-norlys-ink/70 mt-1 max-w-md">
                 Start et opkald fra panelet til venstre, eller bed assistenten
                 herunder om hjælp.
               </p>
@@ -206,10 +210,13 @@ const activeCount = computed(
           />
 
           <!-- Errors -->
-          <div v-if="error" class="text-center text-[#ED0812] text-sm py-2">
+          <div v-if="error" class="text-center text-norlys-red text-sm py-2">
             {{ error }}
           </div>
-          <div v-if="callError" class="text-center text-[#ED0812] text-sm py-2">
+          <div
+            v-if="callError"
+            class="text-center text-norlys-red text-sm py-2"
+          >
             Opkaldsfejl: {{ callError }}
           </div>
         </div>
@@ -221,7 +228,7 @@ const activeCount = computed(
         class="flex justify-center px-4 pb-2 max-w-3xl mx-auto w-full"
       >
         <button
-          class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-zinc-200 text-zinc-500 text-xs hover:bg-zinc-100 transition-colors"
+          class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-norlys-light-petroleum text-norlys-petroleum text-xs hover:bg-norlys-sand-2 transition-colors"
           @click="clearMessages()"
         >
           Ryd samtale
@@ -233,19 +240,19 @@ const activeCount = computed(
         class="px-4 py-3 max-w-3xl mx-auto w-full pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <div
-          class="flex items-center gap-3 border border-zinc-200 rounded-full px-5 py-3 bg-white shadow-sm focus-within:border-[#ED0812] focus-within:ring-1 focus-within:ring-[#ED0812]/20 transition-all"
+          class="flex items-center gap-3 border border-norlys-light-petroleum rounded-full px-5 py-3 bg-white shadow-sm focus-within:border-norlys-red focus-within:ring-1 focus-within:ring-norlys-red/20 transition-all"
         >
           <input
             ref="inputEl"
             v-model="input"
             type="text"
             placeholder="Spørg assistenten…"
-            class="flex-1 bg-transparent text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+            class="flex-1 bg-transparent text-base text-norlys-ink placeholder:text-norlys-petroleum/50 focus:outline-none font-body"
             @keydown.enter.prevent="send"
           />
           <button
             v-if="isLoading"
-            class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-zinc-900 hover:bg-zinc-700 text-white transition-colors"
+            class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-norlys-petroleum hover:bg-norlys-petroleum-3 text-white transition-colors"
             @click="stopGeneration"
           >
             <svg
@@ -262,8 +269,8 @@ const activeCount = computed(
             class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full transition-colors"
             :class="
               input.trim()
-                ? 'bg-[#ED0812] text-white hover:bg-[#c4060f]'
-                : 'bg-zinc-200 text-zinc-400 cursor-default'
+                ? 'bg-norlys-red text-white hover:bg-norlys-red-3'
+                : 'bg-norlys-light-petroleum text-norlys-petroleum/40 cursor-default'
             "
             :disabled="!input.trim()"
             @click="send"
@@ -288,22 +295,25 @@ const activeCount = computed(
 
     <!-- ============== RIGHT — CALL SESSIONS ============== -->
     <aside
-      class="hidden lg:flex flex-col w-[28rem] xl:w-[32rem] shrink-0 h-full pt-12 border-l border-zinc-200 bg-white"
+      class="hidden lg:flex flex-col w-[28rem] xl:w-[32rem] shrink-0 h-full pt-12 border-l border-norlys-light-petroleum bg-white"
     >
       <div
-        class="px-4 py-3 border-b border-zinc-100 flex items-center justify-between"
+        class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center justify-between"
       >
         <div class="flex items-center gap-2">
-          <span class="text-sm font-semibold text-zinc-800">Aktive opkald</span>
           <span
-            class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#ED0812] text-white text-[10px] font-bold"
+            class="font-headline text-base font-bold text-norlys-petroleum-3"
+            >Aktive opkald</span
+          >
+          <span
+            class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-norlys-red text-white text-[10px] font-bold"
             >{{ sessions.length }}</span
           >
         </div>
         <button
           v-if="sessions.some((s) => s.status === 'ended')"
           type="button"
-          class="text-[11px] text-zinc-500 hover:text-[#ED0812] transition-colors"
+          class="text-[11px] text-norlys-petroleum hover:text-norlys-red transition-colors"
           @click="clearEnded()"
         >
           Ryd afsluttede
@@ -313,11 +323,11 @@ const activeCount = computed(
       <div class="flex-1 overflow-y-auto p-3 space-y-2">
         <div
           v-if="sessions.length === 0"
-          class="flex flex-col items-center justify-center h-full text-center text-zinc-400 px-6"
+          class="flex flex-col items-center justify-center h-full text-center text-norlys-petroleum/60 px-6"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            class="w-10 h-10 text-zinc-200 mb-3"
+            class="w-10 h-10 text-norlys-light-petroleum mb-3"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -329,8 +339,10 @@ const activeCount = computed(
               d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
             />
           </svg>
-          <p class="text-sm font-medium text-zinc-500">Ingen opkald endnu</p>
-          <p class="text-xs text-zinc-400 mt-1">
+          <p class="text-sm font-medium text-norlys-petroleum">
+            Ingen opkald endnu
+          </p>
+          <p class="text-xs text-norlys-petroleum/60 mt-1">
             Vælg et scenarie og udfyld formularen til venstre.
           </p>
         </div>
@@ -347,7 +359,7 @@ const activeCount = computed(
 
     <!-- Build version -->
     <div
-      class="hidden lg:block fixed bottom-1 left-2 z-30 text-[10px] text-zinc-300 select-none pointer-events-none"
+      class="hidden lg:block fixed bottom-1 left-2 z-30 text-[10px] text-norlys-petroleum/40 select-none pointer-events-none"
     >
       v{{ config.public.appVersion }}
     </div>

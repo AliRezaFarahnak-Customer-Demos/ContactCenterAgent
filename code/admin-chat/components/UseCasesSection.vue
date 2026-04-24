@@ -64,25 +64,25 @@ const useCases = [
     icon: "💊",
     title: "Clinical Trials",
     desc: "Collect patient symptoms daily across thousands of participants — zero manual follow-up.",
-    color: "violet",
+    color: "petroleum",
   },
   {
     icon: "📞",
     title: "24/7 Support",
     desc: "Always-on, always consistent. Handle surges without hiring. No hold music, ever.",
-    color: "amber",
+    color: "sand",
   },
   {
     icon: "💼",
     title: "Sales Qualification",
     desc: "Qualify inbound leads with a call within 60 seconds of form submit. Instant engagement.",
-    color: "blue",
+    color: "petroleum",
   },
   {
     icon: "🏥",
     title: "Patient Scheduling",
     desc: "500 check-up calls in an hour. Confirmations, reminders, rescheduling — all handled.",
-    color: "emerald",
+    color: "sand",
   },
   {
     icon: "🚨",
@@ -91,10 +91,10 @@ const useCases = [
     color: "red",
   },
   {
-    icon: "�",
+    icon: "💳",
     title: "Debt Collection",
     desc: "Automated, compliant collection calls at scale. Consistent tone, higher contact rates, lower costs.",
-    color: "purple",
+    color: "petroleum",
   },
 ];
 
@@ -102,55 +102,20 @@ const colorClasses: Record<
   string,
   { bg: string; border: string; icon: string }
 > = {
-  violet: {
-    bg: "bg-violet-50",
-    border: "border-violet-100 hover:border-violet-200",
-    icon: "bg-violet-100",
+  petroleum: {
+    bg: "bg-norlys-petroleum/5",
+    border: "border-norlys-petroleum/20 hover:border-norlys-petroleum/40",
+    icon: "bg-norlys-petroleum/10",
   },
-  emerald: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-100 hover:border-emerald-200",
-    icon: "bg-emerald-100",
-  },
-  blue: {
-    bg: "bg-blue-50",
-    border: "border-blue-100 hover:border-blue-200",
-    icon: "bg-blue-100",
-  },
-  amber: {
-    bg: "bg-amber-50",
-    border: "border-amber-100 hover:border-amber-200",
-    icon: "bg-amber-100",
-  },
-  rose: {
-    bg: "bg-rose-50",
-    border: "border-rose-100 hover:border-rose-200",
-    icon: "bg-rose-100",
-  },
-  cyan: {
-    bg: "bg-cyan-50",
-    border: "border-cyan-100 hover:border-cyan-200",
-    icon: "bg-cyan-100",
+  sand: {
+    bg: "bg-norlys-sand-2",
+    border: "border-norlys-light-petroleum hover:border-norlys-petroleum/30",
+    icon: "bg-norlys-sand-3",
   },
   red: {
-    bg: "bg-red-50",
-    border: "border-red-100 hover:border-red-200",
-    icon: "bg-red-100",
-  },
-  purple: {
-    bg: "bg-purple-50",
-    border: "border-purple-100 hover:border-purple-200",
-    icon: "bg-purple-100",
-  },
-  indigo: {
-    bg: "bg-indigo-50",
-    border: "border-indigo-100 hover:border-indigo-200",
-    icon: "bg-indigo-100",
-  },
-  orange: {
-    bg: "bg-orange-50",
-    border: "border-orange-100 hover:border-orange-200",
-    icon: "bg-orange-100",
+    bg: "bg-norlys-red/5",
+    border: "border-norlys-red/20 hover:border-norlys-red/40",
+    icon: "bg-norlys-red/10",
   },
 };
 
@@ -172,7 +137,7 @@ onMounted(() => {
       style="transition: all 0.6s ease-out 0.3s"
     >
       <h3
-        class="text-3xl sm:text-4xl font-black text-zinc-900 tracking-tight uppercase"
+        class="font-headline text-3xl sm:text-4xl font-bold text-norlys-petroleum-3 tracking-tight"
       >
         AI Call Center
       </h3>
@@ -199,15 +164,18 @@ onMounted(() => {
         <div
           class="shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center text-base sm:text-xl group-hover:scale-110 transition-transform duration-200"
           :class="colorClasses[uc.color].icon"
+          aria-hidden="true"
         >
           {{ uc.icon }}
         </div>
         <div class="min-w-0">
-          <div class="text-xs sm:text-sm font-bold text-zinc-800">
+          <div
+            class="font-headline text-xs sm:text-sm font-bold text-norlys-petroleum-3"
+          >
             {{ uc.title }}
           </div>
           <div
-            class="hidden sm:block text-xs text-zinc-500 leading-relaxed mt-0.5"
+            class="hidden sm:block text-xs text-norlys-ink/70 leading-relaxed mt-0.5"
           >
             {{ uc.desc }}
           </div>
@@ -217,7 +185,7 @@ onMounted(() => {
       <!-- Live stats card (full width, below the use cases) -->
       <div
         v-if="stats && (stats.totalCalls > 0 || stats.countries.length > 0)"
-        class="col-span-2 p-4 rounded-xl border bg-zinc-50 border-zinc-200 hover:border-zinc-300 hover:shadow-lg transition-all duration-500 cursor-default"
+        class="col-span-2 p-4 rounded-xl border bg-norlys-sand-2 border-norlys-light-petroleum hover:border-norlys-petroleum/30 hover:shadow-lg transition-all duration-500 cursor-default"
         :class="
           visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
         "
@@ -226,40 +194,41 @@ onMounted(() => {
         <!-- Top row: stats numbers + live badge -->
         <div class="flex items-center gap-6 sm:mb-3">
           <div
-            class="shrink-0 w-10 h-10 rounded-xl bg-zinc-100 flex items-center justify-center text-xl"
+            class="shrink-0 w-10 h-10 rounded-xl bg-norlys-light-petroleum flex items-center justify-center text-xl"
+            aria-hidden="true"
           >
             📊
           </div>
           <div>
             <div
-              class="text-2xl sm:text-3xl font-black text-zinc-900 tabular-nums tracking-tight leading-tight"
+              class="font-headline text-2xl sm:text-3xl font-bold text-norlys-petroleum-3 tabular-nums tracking-tight leading-tight"
             >
               {{ animatedCalls.toLocaleString() }}
             </div>
             <div
-              class="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider"
+              class="text-[10px] text-norlys-petroleum/60 font-semibold uppercase tracking-wider"
             >
               AI Calls
             </div>
           </div>
-          <div class="w-px h-8 bg-zinc-200" />
+          <div class="w-px h-8 bg-norlys-light-petroleum-3" />
           <div>
             <div
-              class="text-2xl sm:text-3xl font-black text-zinc-900 tabular-nums tracking-tight leading-tight"
+              class="font-headline text-2xl sm:text-3xl font-bold text-norlys-petroleum-3 tabular-nums tracking-tight leading-tight"
             >
               {{ animatedCountries }}
             </div>
             <div
-              class="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider"
+              class="text-[10px] text-norlys-petroleum/60 font-semibold uppercase tracking-wider"
             >
               Countries
             </div>
           </div>
           <div
-            class="ml-auto shrink-0 flex items-center gap-1 text-[9px] text-zinc-400 font-medium uppercase tracking-widest"
+            class="ml-auto shrink-0 flex items-center gap-1 text-[9px] text-norlys-petroleum/60 font-medium uppercase tracking-widest"
           >
             <span
-              class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"
+              class="w-1.5 h-1.5 rounded-full bg-norlys-red animate-pulse"
             />
             Live
           </div>
@@ -268,12 +237,12 @@ onMounted(() => {
         <!-- Bottom row: country flags with call counts (hidden on mobile) -->
         <div
           v-if="stats.countries.length > 0"
-          class="hidden sm:flex flex-wrap gap-2 pt-3 border-t border-zinc-200"
+          class="hidden sm:flex flex-wrap gap-2 pt-3 border-t border-norlys-light-petroleum"
         >
           <div
             v-for="country in stats.countries"
             :key="country.code"
-            class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white border border-zinc-100 shadow-sm"
+            class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white border border-norlys-light-petroleum shadow-sm"
             :title="`${country.name} · ${country.calls} calls`"
           >
             <img
@@ -281,9 +250,10 @@ onMounted(() => {
               :alt="country.name"
               class="w-6 h-4 rounded-[3px] object-cover ring-1 ring-black/5"
             />
-            <span class="text-xs font-bold text-zinc-700 tabular-nums">{{
-              country.calls
-            }}</span>
+            <span
+              class="text-xs font-bold text-norlys-petroleum-3 tabular-nums"
+              >{{ country.calls }}</span
+            >
           </div>
         </div>
       </div>
@@ -291,7 +261,7 @@ onMounted(() => {
       <!-- Stats loading skeleton -->
       <div
         v-else-if="statsLoading"
-        class="col-span-1 sm:col-span-2 h-20 rounded-xl bg-zinc-100 animate-pulse"
+        class="col-span-1 sm:col-span-2 h-20 rounded-xl bg-norlys-sand-2 animate-pulse"
       />
     </div>
   </div>
