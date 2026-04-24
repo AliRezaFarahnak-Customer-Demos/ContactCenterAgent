@@ -357,11 +357,19 @@ const activeCount = computed(
       </div>
     </aside>
 
-    <!-- Build version -->
+    <!-- Build version (bottom-left) -->
     <div
       class="hidden lg:block fixed bottom-1 left-2 z-30 text-[10px] text-norlys-petroleum/40 select-none pointer-events-none"
     >
       v{{ config.public.appVersion }}
+    </div>
+
+    <!-- Build number (bottom-right) — increments per git commit -->
+    <div
+      class="fixed bottom-1 right-2 z-30 text-[10px] font-semibold tabular-nums text-norlys-petroleum/50 select-none pointer-events-none"
+      :title="`Build ${config.public.buildNumber} — v${config.public.appVersion}`"
+    >
+      B{{ config.public.buildNumber }}
     </div>
   </div>
 </template>

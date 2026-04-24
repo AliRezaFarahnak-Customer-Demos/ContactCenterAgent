@@ -241,14 +241,6 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                         silence_duration_ms = isEnglish ? 500 : 700,
                         // Filler-word list is English-only per docs — keep ON for English, OFF otherwise.
                         remove_filler_words = isEnglish,
-                        // Multilingual semantic EOU detection — drastically reduces false end-of-turn
-                        // signals during natural pauses, supports the same 10 languages as multilingual VAD.
-                        end_of_utterance_detection = new
-                        {
-                            model = "semantic_detection_v1_multilingual",
-                            threshold_level = "medium",
-                            timeout_ms = 1500
-                        },
                         interrupt_response = true,
                         auto_truncate = true
                     },

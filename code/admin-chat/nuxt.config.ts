@@ -19,6 +19,9 @@ export default defineNuxtConfig({
       // Set by CI via NUXT_PUBLIC_APP_VERSION env var (e.g. 1.0.0.42)
       // Falls back to "0.0.0-local" for local dev
       appVersion: "0.0.0-local",
+      // Monotonic build number (git commit count). Set via NUXT_PUBLIC_BUILD_NUMBER
+      // build arg by the azd prepackage hook. Falls back to "0" for local dev.
+      buildNumber: "0",
       // App Insights connection string for browser-side telemetry
       // Set via NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING env var (injected by Bicep)
       appInsightsConnectionString: "",

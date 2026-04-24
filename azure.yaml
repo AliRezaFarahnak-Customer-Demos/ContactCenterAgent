@@ -46,12 +46,26 @@ services:
     project: code/admin-chat
     host: containerapp
     language: docker
+    # prepackage hook computes BUILD_NUMBER from git commit count so each
+    # commit gets a monotonically increasing badge (B1, B2, ...) shown in
+    # the bottom-right corner of the UI. Falls back to 0 outside a git repo.
+    hooks:
+      prepackage:
+        shell: pwsh
+        run: |
+          $count = (git rev-list --count HEAD 2>$null)
+          if (-not $count) { $count = 0 }
+          Write-Host "Setting BUILD_NUMBER=$count"
+          azd env set BUILD_NUMBER $count | Out-Null
+        interactive: false
+        continueOnError: true
     docker:
       path: ./Dockerfile
       context: .
       remoteBuild: true
       buildArgs:
         - APP_VERSION=${APP_VERSION:-0.0.0-local}
+        - BUILD_NUMBER=${BUILD_NUMBER:-0}
         - NUXT_PUBLIC_SITE_URL=${ADMIN_CHAT_APP_URL}
         - NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
 
