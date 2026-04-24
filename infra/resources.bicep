@@ -67,20 +67,20 @@ resource aiProject 'Microsoft.CognitiveServices/accounts/projects@2025-10-01-pre
 }
 
 // ---------------------------------------------------------------------------
-// 3a. Model Deployment — GPT-5.2 (chat/agent)
+// 3a. Model Deployment — GPT-5.4-nano (chat/agent)
 // ---------------------------------------------------------------------------
 resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = {
   parent: aiFoundry
-  name: 'gpt-5.2'
+  name: 'gpt-5.4-nano'
   sku: {
     capacity: 1000
     name: 'GlobalStandard'
   }
   properties: {
     model: {
-      name: 'gpt-5.2'
+      name: 'gpt-5.4-nano'
       format: 'OpenAI'
-      version: '2025-12-11'
+      version: '2026-03-17'
     }
   }
 }
@@ -340,7 +340,7 @@ resource adminChatApp 'Microsoft.App/containerApps@2025-07-01' = {
             }
             {
               name: 'AzureOpenAI__Model'
-              value: 'gpt-5.2'
+              value: 'gpt-5.4-nano'
             }
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'

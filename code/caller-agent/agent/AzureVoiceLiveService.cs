@@ -162,7 +162,7 @@ PHONE RULES (always apply):
                 // Start listening for messages
                 StartConversation();
 
-                // Initialize conversation analysis service (uses gpt-5.2 structured outputs)
+                // Initialize conversation analysis service (uses gpt-5.4-nano structured outputs)
                 if (m_analysisWriter != null)
                 {
                     try
@@ -658,3 +658,4 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
         }
     }
 }
+

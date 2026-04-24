@@ -196,7 +196,7 @@ function scoreLabel(score: number): string {
         <div
           class="flex items-center gap-1.5 text-[10px] text-zinc-400 mb-3 px-1"
         >
-          <span class="font-medium">Powered by GPT-5.2 Structured Outputs</span>
+          <span class="font-medium">Powered by GPT-5.4-nano Structured Outputs</span>
         </div>
 
         <div v-for="cat in ANALYSIS_CATEGORIES" :key="cat.key" class="px-1">
@@ -263,3 +263,4 @@ function scoreLabel(score: number): string {
     </div>
   </aside>
 </template>
+

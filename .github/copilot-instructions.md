@@ -51,7 +51,7 @@ A multi-agent management platform powered by Azure AI Foundry and Azure Containe
 | Layer      | Technology                                                     |
 | ---------- | -------------------------------------------------------------- |
 | Runtime    | Azure Container Apps (.NET 10 backend + Nuxt 3 Vue frontend)   |
-| AI Backend | Azure AI Foundry (`AIServices` kind, S0) — GPT-5.2             |
+| AI Backend | Azure AI Foundry (`AIServices` kind, S0) — GPT-5.4-nano             |
 | Frontend   | Vue 3 + Nuxt 3 (direct AG-UI protocol over SSE, no CopilotKit) |
 | Storage    | Azure Storage Account (Table Storage for agent data)           |
 | IaC        | Bicep (subscription-scoped `main.bicep` → `resources.bicep`)   |
@@ -64,7 +64,7 @@ A multi-agent management platform powered by Azure AI Foundry and Azure Containe
 | Resource Group     | `rg-contactcenteragent`       | All resources under one RG                             |
 | AI Foundry         | `cog-contactcenteragent`      | `AIServices` kind, S0, Managed Identity                |
 | AI Foundry Project | `cog-contactcenteragent-prj`  | Child of AI Foundry account                            |
-| Model Deployment   | `gpt-5.2`                     | GPT-5.2, GlobalStandard, capacity 1000                 |
+| Model Deployment   | `gpt-5.4-nano`                     | GPT-5.4-nano, GlobalStandard, capacity 1000                 |
 | Model Deployment   | `gpt-realtime`                | gpt-realtime-1.5 (2026-02-23), GlobalStandard, cap 10  |
 | Storage Account    | `stcontactcenteragent`        | Standard_LRS, Table Storage                            |
 | Container Registry | `crcontactcenteragent`        | Standard SKU, admin enabled                            |
@@ -103,7 +103,7 @@ code/
       ChatMessage.vue          # Chat message component (markdown + streaming)
       ActivityPanel.vue        # Debug/session activity sidebar (hidden by default with v-if="false")
       TranscriptionPanel.vue   # Live call transcript sidebar
-      AnalysisPanel.vue        # Real-time 15-category conversation analysis bars (GPT-5.2)
+      AnalysisPanel.vue        # Real-time 15-category conversation analysis bars (GPT-5.4-nano)
       CallLogPanel.vue         # Live call log sidebar (inbound/outbound calls via SSE)
     composables/
       useAgentChat.ts          # AG-UI SSE client composable
@@ -135,7 +135,7 @@ code/
       CallerAgent.cs           # API endpoints, ACS call handling, call log broadcast, per-call state (channels, prompts)
       AcsMediaStreamingHandler.cs  # WebSocket ↔ ACS media stream bridge
       AzureVoiceLiveService.cs     # Voice Live API 2025-10-01 (raw WebSocket, configurable voice)
-      ConversationAnalysisService.cs # GPT-5.2 structured output analysis (15 categories, scored 0-5)
+      ConversationAnalysisService.cs # GPT-5.4-nano structured output analysis (15 categories, scored 0-5)
       Helper.cs                # EventGrid parsing, caller ID extraction
       CallerAgent.csproj       # .NET 8 Web SDK project (Azure.AI.OpenAI v2.1.0)
       appsettings.json         # Config (ACS, Azure OpenAI, phone number, Voice, AnalysisDeploymentName)
@@ -256,12 +256,12 @@ dotnet run --urls "http://localhost:5000"
 
 ## Real-Time Conversation Analysis
 
-During live phone calls, the caller agent feeds transcripts to GPT-5.2 via structured outputs to produce real-time sentiment/intent scores. The analysis data flows:
+During live phone calls, the caller agent feeds transcripts to GPT-5.4-nano via structured outputs to produce real-time sentiment/intent scores. The analysis data flows:
 
 ```
 AzureVoiceLiveService (transcript events)
   → ConversationAnalysisService.AddTranscriptAndAnalyzeAsync()
-  → GPT-5.2 structured output (ChatResponseFormat.CreateJsonSchemaFormat, strict: true)
+  → GPT-5.4-nano structured output (ChatResponseFormat.CreateJsonSchemaFormat, strict: true)
   → ChannelWriter<AnalysisResult>
   → CallerAgent SSE endpoint (GET /api/analysis/{contextId})
   → Nuxt proxy (server/api/analysis/[contextId].get.ts)
@@ -292,8 +292,8 @@ AzureVoiceLiveService (transcript events)
 ### Analysis Architecture Details
 
 - **ConversationAnalysisService.cs**: Accumulates full transcript, uses `SemaphoreSlim` to debounce (only one analysis in-flight at a time). Fire-and-forget `_ = Task.Run(() => RunAnalysisAsync())` after each transcript addition.
-- **Schema**: JSON Schema with `additionalProperties: false` and `strict: true` — GPT-5.2 returns exactly the 15 integer fields.
-- **Config**: `AzureOpenAI:AnalysisDeploymentName` in appsettings.json (set to `gpt-5.2`).
+- **Schema**: JSON Schema with `additionalProperties: false` and `strict: true` — GPT-5.4-nano returns exactly the 15 integer fields.
+- **Config**: `AzureOpenAI:AnalysisDeploymentName` in appsettings.json (set to `gpt-5.4-nano`).
 - **Auth**: Uses `AzureOpenAIClient` with `DefaultAzureCredential` (same as other Azure OpenAI calls).
 - **SSE format**: Each event is `data: {"PurchaseIntent":3,...,"Timestamp":"..."}\n\n`, terminated by `data: [DONE]\n\n` on call end.
 
@@ -511,18 +511,18 @@ Hard-earned lessons from debugging sessions — **read before making changes**.
 - These versions have different API surfaces. Code that works in one may not compile in the other.
 - `ChatResponseFormat.CreateJsonSchemaFormat()` works in both, but parameter names/overloads differ.
 
-### GPT-5.2 — Do NOT Use `MaxOutputTokenCount` with Azure.AI.OpenAI v2.1.0
+### GPT-5.4-nano — Do NOT Use `MaxOutputTokenCount` with Azure.AI.OpenAI v2.1.0
 
 - `Azure.AI.OpenAI` v2.1.0 sends `MaxOutputTokenCount` as `max_tokens` in the HTTP request.
-- GPT-5.2 **rejects `max_tokens`** with `400 BadRequest: Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.`
-- **Fix**: Do NOT set `MaxOutputTokenCount` on `ChatCompletionOptions` when using the v2.1.0 SDK with GPT-5.2. Omit it entirely and let the model use its default.
+- GPT-5.4-nano **rejects `max_tokens`** with `400 BadRequest: Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.`
+- **Fix**: Do NOT set `MaxOutputTokenCount` on `ChatCompletionOptions` when using the v2.1.0 SDK with GPT-5.4-nano. Omit it entirely and let the model use its default.
 - This was the root cause of the analysis panel showing no data — the error was silently swallowed by the fire-and-forget pattern.
 - The newer `Azure.AI.OpenAI` v2.8.0-beta.1 (used by admin-chat) correctly sends `max_completion_tokens` instead.
 
-### GPT-5.2 — Do NOT Use `ReasoningEffort`
+### GPT-5.4-nano — Do NOT Use `ReasoningEffort`
 
 - Setting `ChatCompletionOptions.ReasoningEffort = ChatReasoningEffort.Low` (or any reasoning options) causes a **400 BadRequest** from Azure OpenAI with error: `Unknown parameter: 'reasoning'`.
-- GPT-5.2 on Azure AI Foundry (AIServices kind) does **not** support the reasoning parameter.
+- GPT-5.4-nano on Azure AI Foundry (AIServices kind) does **not** support the reasoning parameter.
 - **Fix**: Remove any `ConfigureOptions` block that sets `ReasoningEffort` or `ReasoningOptions`.
 
 ### Silent Failures in Fire-and-Forget Patterns
@@ -583,3 +583,4 @@ Hard-earned lessons from debugging sessions — **read before making changes**.
 - Current tunnel: `https://<your-subdomain>-5000.<region>.devtunnels.ms` (maps to localhost:5000)
 - Must be running (`devtunnel host`) before placing calls locally.
 - The tunnel URL is set via `$env:VS_TUNNEL_URL` when starting the caller agent.
+

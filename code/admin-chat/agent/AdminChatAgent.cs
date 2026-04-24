@@ -184,7 +184,7 @@ public class AdminChatAgentFactory
             ?? throw new InvalidOperationException(
                 "AzureOpenAI:Endpoint is not configured. " +
                 "Set it via user-secrets: dotnet user-secrets set \"AzureOpenAI:Endpoint\" \"https://<your-resource>.cognitiveservices.azure.com/\"");
-        var modelName = _config["AzureOpenAI:Model"] ?? "gpt-5.2";
+        var modelName = _config["AzureOpenAI:Model"] ?? "gpt-5.4-nano";
 
         // Azure OpenAI with shared credential singleton (MI in Azure, AzureCli locally)
         var azureClient = new AzureOpenAIClient(
@@ -232,7 +232,7 @@ public class AdminChatAgentFactory
         return new PlatformInfo(
             Region: "swedencentral",
             Runtime: "Azure Container Apps",
-            AIBackend: "Azure AI Foundry (GPT-5.2)",
+            AIBackend: "Azure AI Foundry (GPT-5.4-nano)",
             Storage: "Azure Table Storage",
             AgentCount: 1);
     }
@@ -418,3 +418,4 @@ public partial class Program { }
 [JsonSerializable(typeof(PlatformInfo))]
 [JsonSerializable(typeof(PhoneCallResult))]
 internal sealed partial class AdminChatSerializerContext : JsonSerializerContext;
+

@@ -8,7 +8,7 @@ using OpenAI.Chat;
 namespace CallAutomation.AzureAI.VoiceLive;
 
 /// <summary>
-/// Real-time conversation analysis using GPT-5.2 structured outputs.
+/// Real-time conversation analysis using GPT-5.4-nano structured outputs.
 /// Listens to transcript events and produces 15-category sentiment scores (0-5)
 /// after every new speaker turn.
 /// </summary>
@@ -81,7 +81,7 @@ public class ConversationAnalysisService : IDisposable
         var endpoint = configuration.GetValue<string>("AzureOpenAI:Endpoint");
         ArgumentNullException.ThrowIfNullOrEmpty(endpoint);
 
-        var deploymentName = configuration.GetValue<string>("AzureOpenAI:AnalysisDeploymentName") ?? "gpt-5.2";
+        var deploymentName = configuration.GetValue<string>("AzureOpenAI:AnalysisDeploymentName") ?? "gpt-5.4-nano";
 
         // Create ChatClient with Azure OpenAI using DefaultAzureCredential
         var azureClient = new AzureOpenAIClient(new Uri(endpoint), credential);
@@ -136,7 +136,7 @@ public class ConversationAnalysisService : IDisposable
                     jsonSchema: s_analysisSchema,
                     jsonSchemaIsStrict: true)
                 // Do NOT set MaxOutputTokenCount — Azure.AI.OpenAI v2.1.0 sends 'max_tokens'
-                // but GPT-5.2 requires 'max_completion_tokens'. Omitting uses the model's default.
+                // but GPT-5.4-nano requires 'max_completion_tokens'. Omitting uses the model's default.
             };
 
             var messages = new ChatMessage[]
@@ -234,3 +234,4 @@ public record AnalysisResult(
 );
 
 internal record TranscriptLine(string Speaker, string Text);
+
