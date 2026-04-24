@@ -151,8 +151,7 @@ const activeCount = computed(
     </div>
 
     <!-- ============== CENTER — CHAT ============== -->
-    <!-- lg:pr-32 / xl:pr-48 compensates for asymmetric side columns (right=28rem, left=20rem; right=32rem on xl) so the chat is centered relative to the viewport, not the middle column. -->
-    <div class="flex-1 flex flex-col h-full min-w-0 pt-12 lg:pr-32 xl:pr-48">
+    <div class="flex-1 flex flex-col h-full min-w-0 pt-12">
       <div ref="chatContainer" class="flex-1 overflow-y-auto">
         <div
           class="px-4 py-6 space-y-4 max-w-3xl mx-auto"
@@ -185,13 +184,13 @@ const activeCount = computed(
                 />
               </svg>
             </div>
-            <div>
+            <div class="flex flex-col items-center max-w-md">
               <h1
-                class="font-headline text-3xl font-bold text-norlys-petroleum-3"
+                class="font-headline text-3xl font-bold text-norlys-petroleum-3 text-center"
               >
                 CallCenter Demo
               </h1>
-              <p class="text-sm text-norlys-ink/70 mt-1 max-w-md">
+              <p class="text-sm text-norlys-ink/70 mt-1 text-center">
                 Start et opkald fra panelet til venstre, eller bed assistenten
                 herunder om hjælp.
               </p>
@@ -358,19 +357,12 @@ const activeCount = computed(
       </div>
     </aside>
 
-    <!-- Build version (bottom-left) -->
-    <div
-      class="hidden lg:block fixed bottom-1 left-2 z-30 text-[10px] text-norlys-petroleum/40 select-none pointer-events-none"
-    >
-      v{{ config.public.appVersion }}
-    </div>
-
-    <!-- Build number (bottom-right) — increments per git commit -->
+    <!-- Single version badge (bottom-right) — git commit count -->
     <div
       class="fixed bottom-1 right-2 z-30 text-[10px] font-semibold tabular-nums text-norlys-petroleum/50 select-none pointer-events-none"
-      :title="`Build ${config.public.buildNumber} — v${config.public.appVersion}`"
+      :title="`Version ${config.public.appVersion}`"
     >
-      B{{ config.public.buildNumber }}
+      v{{ config.public.buildNumber }}
     </div>
   </div>
 </template>

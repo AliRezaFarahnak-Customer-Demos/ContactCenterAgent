@@ -46,9 +46,11 @@ services:
     project: code/admin-chat
     host: containerapp
     language: docker
-    # prepackage hook computes BUILD_NUMBER from git commit count so each
-    # commit gets a monotonically increasing badge (B1, B2, ...) shown in
-    # the bottom-right corner of the UI. Falls back to 0 outside a git repo.
+    # prepackage hook writes .version.json into the build context BEFORE
+    # the source tarball is uploaded to ACR. nuxt.config.ts reads it at
+    # build time and embeds the values into the SPA bundle. This avoids
+    # the chicken-and-egg with azd ${VAR} buildArg substitution which
+    # snapshots env values before hooks run.
     hooks:
       prepackage:
         shell: pwsh
@@ -58,9 +60,9 @@ services:
           $sha = (git rev-parse --short HEAD 2>$null)
           if (-not $sha) { $sha = "local" }
           $version = "1.0.$count-$sha"
-          Write-Host "Setting BUILD_NUMBER=$count APP_VERSION=$version"
-          azd env set BUILD_NUMBER $count | Out-Null
-          azd env set APP_VERSION $version | Out-Null
+          $json = @{ appVersion = $version; buildNumber = "$count" } | ConvertTo-Json -Compress
+          Set-Content -Path "code/admin-chat/.version.json" -Value $json -NoNewline
+          Write-Host "Wrote code/admin-chat/.version.json: $json"
         interactive: false
         continueOnError: true
     docker:
@@ -68,8 +70,6 @@ services:
       context: .
       remoteBuild: true
       buildArgs:
-        - APP_VERSION=${APP_VERSION}
-        - BUILD_NUMBER=${BUILD_NUMBER}
         - NUXT_PUBLIC_SITE_URL=${ADMIN_CHAT_APP_URL}
         - NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
 

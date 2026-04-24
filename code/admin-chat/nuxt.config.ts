@@ -1,6 +1,16 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 // Build-time site URL for absolute OG image paths (required by LinkedIn/Twitter)
 // Set via NUXT_PUBLIC_SITE_URL env var in CI, empty for local dev
 const siteUrl = (process.env.NUXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+
+// Version info written by the azd prepackage hook into .version.json before
+// the source is uploaded to ACR remote build. Falls back to local defaults.
+const versionPath = resolve(__dirname, ".version.json");
+const version = existsSync(versionPath)
+  ? JSON.parse(readFileSync(versionPath, "utf-8"))
+  : { appVersion: "0.0.0-local", buildNumber: "0" };
 
 export default defineNuxtConfig({
   compatibilityDate: "2025-01-01",
@@ -16,12 +26,8 @@ export default defineNuxtConfig({
       process.env.CALLER_AGENT_URL ||
       "http://localhost:5000",
     public: {
-      // Set by CI via NUXT_PUBLIC_APP_VERSION env var (e.g. 1.0.0.42)
-      // Falls back to "0.0.0-local" for local dev
-      appVersion: "0.0.0-local",
-      // Monotonic build number (git commit count). Set via NUXT_PUBLIC_BUILD_NUMBER
-      // build arg by the azd prepackage hook. Falls back to "0" for local dev.
-      buildNumber: "0",
+      appVersion: version.appVersion,
+      buildNumber: String(version.buildNumber),
       // App Insights connection string for browser-side telemetry
       // Set via NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING env var (injected by Bicep)
       appInsightsConnectionString: "",

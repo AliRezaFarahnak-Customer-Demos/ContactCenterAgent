@@ -2,20 +2,13 @@
 # Contact Center Agent — Admin Chat Agent
 # Multi-stage Dockerfile: Nuxt 3 frontend + .NET 10 backend in one container
 # ---------------------------------------------------------------------------
-
-# Build arg: version string (e.g. 1.0.0.42), set by CI
-ARG APP_VERSION=0.0.0-local
-# Build arg: monotonic build number (git commit count), set by azd prepackage hook
-ARG BUILD_NUMBER=0
+# Note: app version + build number come from .version.json in the build
+# context (written by the azd prepackage hook). nuxt.config.ts reads it.
 
 # ---- Stage 1: Build the Nuxt 3 frontend ----
 FROM node:22-alpine AS frontend-build
-ARG APP_VERSION
-ARG BUILD_NUMBER
 ARG NUXT_PUBLIC_SITE_URL
 ARG NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING
-ENV NUXT_PUBLIC_APP_VERSION=$APP_VERSION
-ENV NUXT_PUBLIC_BUILD_NUMBER=$BUILD_NUMBER
 ENV NUXT_PUBLIC_SITE_URL=$NUXT_PUBLIC_SITE_URL
 ENV NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING=$NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING
 WORKDIR /app
@@ -23,7 +16,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
-COPY nuxt.config.ts tsconfig.json tailwind.config.ts ./
+COPY nuxt.config.ts tsconfig.json tailwind.config.ts .version.json ./
 COPY app.vue ./
 COPY pages/ pages/
 COPY components/ components/
@@ -63,11 +56,6 @@ COPY --from=agent-build /publish ./agent/
 # Copy Nuxt 3 production build
 COPY --from=frontend-build /app/.output ./.output
 
-# Set agent URL for the Nuxt server route to connect to the .NET backend
-ARG APP_VERSION
-ARG BUILD_NUMBER
-ENV NUXT_PUBLIC_APP_VERSION=$APP_VERSION
-ENV NUXT_PUBLIC_BUILD_NUMBER=$BUILD_NUMBER
 ENV AGENT_URL=http://localhost:8000/
 ENV PORT=3000
 ENV HOST=0.0.0.0
