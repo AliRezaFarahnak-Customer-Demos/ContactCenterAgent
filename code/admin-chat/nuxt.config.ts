@@ -95,6 +95,21 @@ export default defineNuxtConfig({
           sizes: "180x180",
           href: "/apple-touch-icon.png",
         },
+        // Preload Norlys brand fonts to avoid FOUT on first paint
+        {
+          rel: "preload",
+          as: "font",
+          type: "font/otf",
+          href: "/fonts/NORLYSText-Regular.otf",
+          crossorigin: "anonymous",
+        },
+        {
+          rel: "preload",
+          as: "font",
+          type: "font/otf",
+          href: "/fonts/NORLYSHeadline-Bold.otf",
+          crossorigin: "anonymous",
+        },
       ],
     },
   },

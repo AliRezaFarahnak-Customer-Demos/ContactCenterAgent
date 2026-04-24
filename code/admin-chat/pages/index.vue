@@ -171,7 +171,7 @@ const activeCount = computed(
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="w-6 h-6 text-white"
+                class="w-6 h-6 text-norlys-sand"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -252,7 +252,7 @@ const activeCount = computed(
           />
           <button
             v-if="isLoading"
-            class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-norlys-petroleum hover:bg-norlys-petroleum-3 text-white transition-colors"
+            class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-norlys-petroleum hover:bg-norlys-petroleum-3 text-norlys-sand transition-colors"
             @click="stopGeneration"
           >
             <svg
@@ -269,7 +269,7 @@ const activeCount = computed(
             class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full transition-colors"
             :class="
               input.trim()
-                ? 'bg-norlys-red text-white hover:bg-norlys-red-3'
+                ? 'bg-norlys-red text-norlys-sand hover:bg-norlys-red-3'
                 : 'bg-norlys-light-petroleum text-norlys-petroleum/40 cursor-default'
             "
             :disabled="!input.trim()"
@@ -306,7 +306,7 @@ const activeCount = computed(
             >Aktive opkald</span
           >
           <span
-            class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-norlys-red text-white text-[10px] font-bold"
+            class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-norlys-red text-norlys-sand text-[10px] font-bold"
             >{{ sessions.length }}</span
           >
         </div>

@@ -310,7 +310,7 @@ const vAutosize = {
       <button
         type="button"
         :disabled="!canCall"
-        class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full text-white font-body text-sm font-bold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+        class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full text-norlys-sand font-body text-sm font-bold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         :class="
           canCall
             ? 'bg-norlys-red hover:bg-norlys-red-3 active:scale-[0.98] shadow-md'

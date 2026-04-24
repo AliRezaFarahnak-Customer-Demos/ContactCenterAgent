@@ -4,13 +4,44 @@
 
 /* =========================================================================
  * Norlys brand tokens (https://norlys.design — used with permission)
- * Colors and font fallbacks pulled from the public CVI guide:
+ * Colors and typography pulled from the official CVI guide:
  *   /document/307#/grundelementer/farver
  *   /document/307#/grundelementer/typografi
- * The proprietary "Norlys Headline" / "Norlys Text" fonts are gated behind
- * login, so we declare them in the stack but rely on Norlys' own published
- * web fallbacks (Georgia for headlines, Arial for body).
+ * Per the 2025 CVI we use ONLY Norlys Headline Bold (700) for headlines, and
+ * Norlys Text Regular (400) / SemiBold (600) / Bold (700) for body. Georgia
+ * and Arial are the documented web fallbacks while the OTFs load.
  * ========================================================================= */
+
+/* Self-hosted Norlys brand fonts (delivered with the brand kit, not gated). */
+@font-face {
+  font-family: "Norlys Headline";
+  src: url("/fonts/NORLYSHeadline-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Norlys Text";
+  src: url("/fonts/NORLYSText-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Norlys Text";
+  src: url("/fonts/NORLYSText-SemiBold.otf") format("opentype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Norlys Text";
+  src: url("/fonts/NORLYSText-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --norlys-red: #ed0812;
   --norlys-red-2: #d80812;
@@ -66,7 +97,8 @@ body {
   color: var(--norlys-ink);
 }
 
-/* Norlys headlines are always set in the display serif, left-aligned */
+/* Norlys headlines are always set in the display serif, Bold (700), left-aligned.
+ * Per CVI 2025, only Norlys Headline Bold exists — never Regular. */
 h1,
 h2,
 h3,
@@ -75,8 +107,29 @@ h5,
 h6,
 .font-headline {
   font-family: var(--font-headline);
+  font-weight: 700;
   letter-spacing: -0.01em;
   text-align: left;
+}
+
+/*
+ * Form controls do NOT inherit font-family by default in most browsers.
+ * Tailwind's preflight adds `font-family: inherit`, but we assert the brand
+ * stack explicitly so inputs render in Norlys Text (or its Arial fallback)
+ * regardless of preflight ordering or third-party CSS resets.
+ */
+input,
+textarea,
+select,
+button {
+  font-family: var(--font-body);
+}
+
+/* Numeric inputs (phone, code) get tabular figures for alignment */
+input[type="tel"],
+input[type="number"],
+.tabular-nums input {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Hide scrollbars but keep scrolling */

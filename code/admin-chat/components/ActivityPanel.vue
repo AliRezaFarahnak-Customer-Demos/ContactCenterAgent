@@ -57,7 +57,7 @@ function showPopover(i: number, event: MouseEvent) {
 
 <template>
   <aside
-    class="w-full h-full border-l border-zinc-200 overflow-hidden text-[11px] font-mono text-zinc-500 flex flex-col shrink-0 bg-white"
+    class="w-full h-full border-l border-zinc-200 overflow-hidden text-[11px] font-body tabular-nums text-zinc-500 flex flex-col shrink-0 bg-white"
   >
     <!-- Header -->
     <div
@@ -143,14 +143,14 @@ function showPopover(i: number, event: MouseEvent) {
           <div v-if="msg.role === 'tool'" class="mt-0.5 space-y-0.5">
             <div
               v-if="getToolArgs(msg)"
-              class="text-[10px] text-zinc-400 font-mono truncate"
+              class="text-[10px] text-zinc-400 tabular-nums truncate"
             >
               <span class="text-purple-300">in:</span>
               {{ getToolArgs(msg)!.slice(0, 72) }}
             </div>
             <div
               v-if="msg.content"
-              class="text-[10px] text-zinc-400 font-mono truncate"
+              class="text-[10px] text-zinc-400 tabular-nums truncate"
             >
               <span class="text-emerald-400">out:</span>
               {{ msg.content.slice(0, 70) }}
@@ -186,7 +186,7 @@ function showPopover(i: number, event: MouseEvent) {
 
     <!-- Version -->
     <div
-      class="px-3 py-2 border-t border-zinc-100 text-[10px] text-zinc-400 font-mono text-center select-none"
+      class="px-3 py-2 border-t border-zinc-100 text-[10px] text-zinc-400 tabular-nums text-center select-none"
     >
       v{{ useRuntimeConfig().public.appVersion }}
     </div>
@@ -219,7 +219,7 @@ function showPopover(i: number, event: MouseEvent) {
             messages[hoveredIndex].role === 'tool' &&
             messages[hoveredIndex].toolName
           "
-          class="text-purple-600 font-mono text-[20px]"
+          class="text-purple-600 tabular-nums text-[20px]"
         >
           {{ messages[hoveredIndex].toolName }}
         </span>

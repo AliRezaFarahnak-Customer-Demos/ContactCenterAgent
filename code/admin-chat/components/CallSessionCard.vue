@@ -240,9 +240,10 @@ function summaryClasses(tone: CallSummary["tone"]) {
             class="font-headline text-sm font-bold text-norlys-petroleum-3 truncate"
             >{{ session.customerName }}</span
           >
-          <span class="text-xs text-norlys-petroleum/60 font-mono shrink-0">{{
-            session.phoneNumber
-          }}</span>
+          <span
+            class="text-xs text-norlys-petroleum/60 tabular-nums shrink-0"
+            >{{ session.phoneNumber }}</span
+          >
         </div>
         <div class="flex items-center gap-2 mt-0.5">
           <span class="text-[11px] text-norlys-ink/70 truncate">{{
