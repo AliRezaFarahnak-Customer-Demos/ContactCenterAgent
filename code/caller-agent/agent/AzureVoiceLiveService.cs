@@ -224,6 +224,42 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
             var isEnglish = string.IsNullOrEmpty(m_languageCode)
                 || m_languageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase);
 
+            // ---------------------------------------------------------------------
+            // PSTN / TELEPHONY TWEAKS (overridable from appsettings.json → VoiceLive:Vad)
+            // ---------------------------------------------------------------------
+            // Why these defaults differ from the spec:
+            //   * threshold 0.7 (vs spec 0.5)
+            //       8 kHz G.711 phone audio + household noise (kids shouting, TV,
+            //       car cabin) made azure_semantic_vad mis-fire on non-speech.
+            //       Each false fire triggers our barge-in path → bot stops mid-
+            //       sentence ("den stopper tit i sin tale"). 0.7 is the smallest
+            //       bump that reliably ignores background noise on a phone.
+            //   * prefix_padding_ms 400 (vs 300)
+            //       PSTN clipping eats leading consonants on quiet syllables;
+            //       400 ms preserves them so Whisper/the model see the full word.
+            //   * silence_duration_ms 900 for non-EN (vs 500 EN spec)
+            //       Danish has natural mid-utterance pauses ("øh… altså… jamen…")
+            //       that the spec default flags as end-of-turn. 900 ms lets the
+            //       caller actually finish their sentence.
+            //   * remove_filler_words = English only
+            //       Per Voice Live docs the filler-word list is EN-only; enabling
+            //       it for Danish adds latency with zero benefit.
+            //   * interrupt_response = true (default), but exposed as a knob
+            //       Set false from config to debug noise-triggered cut-offs
+            //       without redeploying.
+            // All knobs live under "VoiceLive:Vad" in appsettings.json.
+            // ---------------------------------------------------------------------
+            var vadThreshold = m_configuration.GetValue<double>("VoiceLive:Vad:Threshold", 0.7);
+            var vadPrefixPaddingMs = m_configuration.GetValue<int>("VoiceLive:Vad:PrefixPaddingMs", 400);
+            var vadSilenceMs = m_configuration.GetValue<int>(
+                isEnglish ? "VoiceLive:Vad:SilenceDurationMsEnglish" : "VoiceLive:Vad:SilenceDurationMsOther",
+                isEnglish ? 500 : 900);
+            var vadInterruptResponse = m_configuration.GetValue<bool>("VoiceLive:Vad:InterruptResponse", true);
+
+            m_logger.LogInformation(
+                "VAD config: threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, interrupt={Interrupt}, language={Lang}",
+                vadThreshold, vadPrefixPaddingMs, vadSilenceMs, vadInterruptResponse, m_languageCode ?? "(auto)");
+
             var jsonObject = new
             {
                 type = "session.update",
@@ -238,15 +274,12 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                     turn_detection = new
                     {
                         type = "azure_semantic_vad_multilingual",
-                        // Defaults from spec: threshold=0.5, prefix_padding=300, silence_duration=500.
-                        // For phone-quality Danish we relax silence_duration so natural pauses
-                        // ("øh… altså…") don't trigger premature end-of-turn.
-                        threshold = 0.5,
-                        prefix_padding_ms = 300,
-                        silence_duration_ms = isEnglish ? 500 : 700,
+                        threshold = vadThreshold,
+                        prefix_padding_ms = vadPrefixPaddingMs,
+                        silence_duration_ms = vadSilenceMs,
                         // Filler-word list is English-only per docs — keep ON for English, OFF otherwise.
                         remove_filler_words = isEnglish,
-                        interrupt_response = true,
+                        interrupt_response = vadInterruptResponse,
                         auto_truncate = true
                     },
                     max_response_output_tokens = 300,

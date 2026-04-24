@@ -42,6 +42,29 @@ cd code/caller-agent/agent && dotnet run --urls "http://localhost:5000"
 - **azd ≥ 1.24.1** required (1.23.6 has BlobNotFound bug).
 - Set `ASPNETCORE_ENVIRONMENT=Development` for user-secrets to load.
 
+## Deploy
+
+```bash
+azd up                        # provision + deploy both services
+azd deploy admin-chat         # redeploy SPA only
+azd deploy caller-agent       # redeploy phone agent only (e.g. after voice config tweak)
+```
+
+### Version stamping (admin-chat SPA)
+
+- `code/admin-chat/.version.json` is regenerated automatically on every `azd up` / `azd deploy <svc>` by the **root-level `prepackage` hook** in `azure.yaml`. It writes `1.0.<git-commit-count>-<short-sha>` (e.g. `1.0.19-bdeba07`) and the SPA reads it via `nuxt.config.ts` runtimeConfig.
+- The hook is **root-level on purpose** — service-scoped `services.admin-chat.hooks.prepackage` was observed to silently skip in some flows. Do not move it.
+- `continueOnError: false` — if git is missing or the file write fails, the deploy fails loudly. That's intentional.
+- If the deployed UI shows an old version after deploy: it's almost always **browser cache**. Hard-reload (`Ctrl+Shift+R`) or open incognito. Only if incognito still shows the old version, check `git log` of `.version.json` and rerun `azd deploy admin-chat`.
+
+### Cache busting after deploy
+
+The Nuxt SPA + service worker aggressively cache assets. After every deploy:
+
+1. Hard reload (`Ctrl+Shift+R` / `Ctrl+F5`)
+2. If still old → DevTools → Network → "Disable cache" → reload
+3. Or open in incognito (bypasses SW + cache)
+
 ---
 
 ## Norlys Branding (CVI 2025)

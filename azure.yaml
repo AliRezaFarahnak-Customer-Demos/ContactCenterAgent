@@ -14,6 +14,11 @@ infra:
 # ---------------------------------------------------------------------------
 # Hooks
 # ---------------------------------------------------------------------------
+#   prepackage    : write code/admin-chat/.version.json from current git HEAD
+#                   so the SPA bundle shows the right version after every
+#                   deploy. ROOT-level so it ALWAYS runs (azd deploy <svc>,
+#                   azd up, azd package) — service-scoped hooks under
+#                   services.admin-chat.hooks did not fire reliably.
 #   postprovision : buy a US toll-free phone number from ACS (idempotent).
 #   postdeploy    : create the EventGrid IncomingCall subscription pointing at
 #                   the caller-agent webhook. Must run after `azd deploy` has
@@ -22,6 +27,20 @@ infra:
 #                   EventGrid validates on creation).
 # ---------------------------------------------------------------------------
 hooks:
+  prepackage:
+    shell: pwsh
+    run: |
+      $count = (git rev-list --count HEAD 2>$null)
+      if (-not $count) { $count = 0 }
+      $sha = (git rev-parse --short HEAD 2>$null)
+      if (-not $sha) { $sha = "local" }
+      $version = "1.0.$count-$sha"
+      $json = @{ appVersion = $version; buildNumber = "$count" } | ConvertTo-Json -Compress
+      Set-Content -Path "code/admin-chat/.version.json" -Value $json -NoNewline
+      Write-Host "[prepackage] code/admin-chat/.version.json => $json"
+    interactive: false
+    continueOnError: false
+
   postprovision:
     shell: pwsh
     run: ./scripts/provision-phone-number.ps1 -ResourceGroup "rg-contactcenteragent" -AcsResourceName "acs-contactcenteragent" -ContainerAppName "ca-caller-agent"
@@ -46,25 +65,10 @@ services:
     project: code/admin-chat
     host: containerapp
     language: docker
-    # prepackage hook writes .version.json into the build context BEFORE
-    # the source tarball is uploaded to ACR. nuxt.config.ts reads it at
-    # build time and embeds the values into the SPA bundle. This avoids
-    # the chicken-and-egg with azd ${VAR} buildArg substitution which
-    # snapshots env values before hooks run.
-    hooks:
-      prepackage:
-        shell: pwsh
-        run: |
-          $count = (git rev-list --count HEAD 2>$null)
-          if (-not $count) { $count = 0 }
-          $sha = (git rev-parse --short HEAD 2>$null)
-          if (-not $sha) { $sha = "local" }
-          $version = "1.0.$count-$sha"
-          $json = @{ appVersion = $version; buildNumber = "$count" } | ConvertTo-Json -Compress
-          Set-Content -Path "code/admin-chat/.version.json" -Value $json -NoNewline
-          Write-Host "Wrote code/admin-chat/.version.json: $json"
-        interactive: false
-        continueOnError: true
+    # NOTE: version stamping (.version.json) is done by the ROOT-level
+    # `prepackage` hook above, which runs reliably on `azd up` and
+    # `azd deploy <svc>`. Do NOT add a service-scoped prepackage here —
+    # it has been observed to silently skip in some flows.
     docker:
       path: ./Dockerfile
       context: .
