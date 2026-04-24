@@ -1,0 +1,5 @@
+agent/bin/
+agent/obj/
+.git/
+.azure/
+*.md

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Nuxt 3
+.nuxt/
+.output/
+
+# Build
+dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright screenshots
+.playwright-mcp/
+
+# .NET build outputs (agent/)
+agent/bin/
+agent/obj/
+
+# Debug
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo

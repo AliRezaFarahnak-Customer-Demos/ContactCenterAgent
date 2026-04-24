@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# Contact Center Agent — azd project configuration
+# ---------------------------------------------------------------------------
+name: contactcenteragent
+
+metadata:
+  template: contactcenteragent
+
+infra:
+  provider: bicep
+  path: infra
+  module: main
+
+# ---------------------------------------------------------------------------
+# Hooks
+# ---------------------------------------------------------------------------
+#   postprovision : buy a US toll-free phone number from ACS (idempotent).
+#   postdeploy    : create the EventGrid IncomingCall subscription pointing at
+#                   the caller-agent webhook. Must run after `azd deploy` has
+#                   rolled out the real image (the placeholder image returned
+#                   by `azd provision` doesn't expose /api/incomingCall, which
+#                   EventGrid validates on creation).
+# ---------------------------------------------------------------------------
+hooks:
+  postprovision:
+    shell: pwsh
+    run: ./scripts/provision-phone-number.ps1 -ResourceGroup "rg-contactcenteragent" -AcsResourceName "acs-contactcenteragent" -ContainerAppName "ca-caller-agent"
+    interactive: false
+    continueOnError: false
+
+  postdeploy:
+    shell: pwsh
+    run: ./scripts/setup-eventgrid.ps1 -ResourceGroup "rg-contactcenteragent" -SystemTopicName "evgt-contactcenteragent-acs" -ContainerAppName "ca-caller-agent"
+    interactive: false
+    continueOnError: false
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+# Build args reference Bicep outputs (exposed as env vars by azd):
+#   ADMIN_CHAT_APP_URL                      — used as the public site URL
+#   APPLICATIONINSIGHTS_CONNECTION_STRING   — baked into the browser bundle
+# ---------------------------------------------------------------------------
+services:
+  admin-chat:
+    project: code/admin-chat
+    host: containerapp
+    language: docker
+    docker:
+      path: ./Dockerfile
+      context: .
+      remoteBuild: true
+      buildArgs:
+        - APP_VERSION=${APP_VERSION:-0.0.0-local}
+        - NUXT_PUBLIC_SITE_URL=${ADMIN_CHAT_APP_URL}
+        - NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
+
+  caller-agent:
+    project: code/caller-agent
+    host: containerapp
+    language: docker
+    docker:
+      path: ./Dockerfile
+      context: .
+      remoteBuild: true

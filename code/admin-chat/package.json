@@ -1,0 +1,28 @@
+{
+  "name": "contactcenteragent-admin-chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently --names ui,agent --prefix-colors blue,green \"npm run dev:ui\" \"npm run dev:agent\"",
+    "dev:ui": "nuxt dev --port 3000",
+    "dev:agent": "dotnet run --project agent/AdminChat.csproj --launch-profile http",
+    "build": "nuxt build",
+    "start": "node .output/server/index.mjs",
+    "install:agent": "cd agent && dotnet restore",
+    "postinstall": "nuxt prepare && npm run install:agent"
+  },
+  "dependencies": {
+    "@microsoft/applicationinsights-web": "^3.3.11",
+    "dompurify": "^3.3.1",
+    "marked": "^15.0.0",
+    "nuxt": "^3.16.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.13.0",
+    "@types/dompurify": "^3.0.5",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.0"
+  }
+}

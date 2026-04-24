@@ -1,0 +1,296 @@
+# ---------------------------------------------------------------------------
+# Contact Center Agent — CI/CD Pipeline
+# Deploys to Azure Container Apps
+# ---------------------------------------------------------------------------
+# Auth: Passwordless OIDC (federated credentials) with App Registration.
+# No client secrets or certificates are stored anywhere.
+#
+# Version: 1.0.0.<github_run_number> — shown in the frontend footer.
+#
+# Performance: 3-job pipeline with sequential infra → parallel Docker builds.
+#   infra ── build ──┐
+#              ├── admin-chat   (parallel runner)
+#              └── caller-agent (parallel runner)
+#            infra ──┴── deploy (parallel Container App updates)
+#
+# Optimizations:
+#   - Infra job skipped entirely when no infra files changed
+#   - Phone number provisioning only runs with infra changes
+#   - Docker login via docker/login-action (faster than az acr login)
+#   - Both Container Apps deployed in parallel (background + wait)
+#   - Per-service GHA build cache with scoped keys
+# ---------------------------------------------------------------------------
+
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "code/**"
+      - "infra/**"
+      - "scripts/**"
+      - "azure.yaml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    # allow manual trigger
+
+permissions:
+  id-token: write # needed for OIDC federated credentials
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_VERSION: "1.0.0.${{ github.run_number }}"
+  ACR_NAME: crcontactcenteragent
+  RESOURCE_GROUP: rg-contactcenteragent
+  CONTAINER_APP_ADMIN: ca-admin-chat
+  CONTAINER_APP_CALLER: ca-caller-agent
+  IMAGE_ADMIN: admin-chat
+  IMAGE_CALLER: caller-agent
+
+jobs:
+  # =====================================================================
+  # Job 1: Infrastructure provisioning (steps skipped when no changes)
+  # =====================================================================
+  infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME || 'prod' }}
+      AZURE_LOCATION: swedencentral
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Check if provisioning needed
+        id: infra-check
+        run: |
+          # Check if infra files changed
+          FILES_CHANGED=false
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^infra/|^azure\.yaml|^scripts/'; then
+            FILES_CHANGED=true
+          fi
+
+          # Check if key resources exist (handles fresh deploys)
+          RESOURCES_EXIST=true
+          if ! az acr show --name ${{ env.ACR_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query name -o tsv 2>/dev/null; then
+            RESOURCES_EXIST=false
+          fi
+
+          # Check if phone number is configured on the caller agent
+          PHONE_EXISTS=true
+          PHONE=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_CALLER }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.template.containers[0].env[?name=='AcsPhoneNumber'].value | [0]" -o tsv 2>/dev/null || true)
+          if [ -z "$PHONE" ]; then
+            PHONE_EXISTS=false
+          fi
+          echo "phone=${PHONE}" >> "$GITHUB_OUTPUT"
+
+          if [ "$FILES_CHANGED" = "true" ] || [ "$RESOURCES_EXIST" = "false" ] || [ "$PHONE_EXISTS" = "false" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Provisioning needed: files_changed=$FILES_CHANGED resources_exist=$RESOURCES_EXIST phone_exists=$PHONE_EXISTS"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping provisioning: no changes needed (files=$FILES_CHANGED resources=$RESOURCES_EXIST phone=$PHONE_EXISTS)"
+          fi
+
+      - name: Fetch existing ACS phone number
+        if: steps.infra-check.outputs.changed == 'true'
+        id: existing-phone
+        run: |
+          PHONE="${{ steps.infra-check.outputs.phone }}"
+          echo "phone=${PHONE}" >> "$GITHUB_OUTPUT"
+          echo "Existing AcsPhoneNumber: ${PHONE:-<not yet provisioned>}"
+
+      - name: Provision infrastructure
+        if: steps.infra-check.outputs.changed == 'true'
+        run: |
+          PHONE="${{ steps.existing-phone.outputs.phone }}"
+          az deployment sub create \
+            --name "contactcenteragent-$(date +%s)" \
+            --location ${{ env.AZURE_LOCATION }} \
+            --template-file infra/main.bicep \
+            --parameters environmentName=${{ env.AZURE_ENV_NAME }} location=${{ env.AZURE_LOCATION }} \
+              ${PHONE:+acsPhoneNumber="$PHONE"}
+
+      - name: Provision phone number
+        if: steps.infra-check.outputs.changed == 'true'
+        shell: pwsh
+        run: |
+          ./scripts/provision-phone-number.ps1 `
+            -ResourceGroup ${{ env.RESOURCE_GROUP }} `
+            -AcsResourceName "acs-contactcenteragent" `
+            -ContainerAppName "${{ env.CONTAINER_APP_CALLER }}"
+
+  # =====================================================================
+  # Job 2: Build & push Docker images (parallel matrix — 2 runners)
+  # Needs infra so the ACR exists before we push (critical for fresh deploys)
+  # =====================================================================
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [ infra ]
+    environment: production
+
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - service: admin-chat
+            context: code/admin-chat
+            image: admin-chat
+          - service: caller-agent
+            context: code/caller-agent
+            image: caller-agent
+
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: |
+          TOKEN=$(az acr login --name ${{ env.ACR_NAME }} --expose-token --query accessToken -o tsv)
+          echo "$TOKEN" | docker login ${{ env.ACR_NAME }}.azurecr.io -u 00000000-0000-0000-0000-000000000000 --password-stdin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get App Insights connection string
+        if: matrix.service == 'admin-chat'
+        id: get-appinsights
+        run: |
+          CS=$(az monitor app-insights component show \
+            -g ${{ env.RESOURCE_GROUP }} \
+            -a appi-contactcenteragent \
+            --query connectionString -o tsv)
+          echo "connection_string=${CS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ matrix.image }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/${{ matrix.image }}:latest
+          build-args: |
+            ${{ matrix.service == 'admin-chat' && format('APP_VERSION={0}', env.APP_VERSION) || '' }}
+            ${{ matrix.service == 'admin-chat' && format('NUXT_PUBLIC_SITE_URL={0}', vars.NUXT_PUBLIC_SITE_URL || format('https://{0}.{1}.azurecontainerapps.io', env.CONTAINER_APP_ADMIN, 'placeholder')) || '' }}
+            ${{ matrix.service == 'admin-chat' && format('NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING={0}', steps.get-appinsights.outputs.connection_string) || '' }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+  # =====================================================================
+  # Job 3: Deploy Container Apps (waits for infra + build)
+  # =====================================================================
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [ infra, build ]
+    environment: production
+
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    steps:
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Fetch current ACS phone number
+        id: acs-phone
+        run: |
+          PHONE=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_CALLER }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.template.containers[0].env[?name=='AcsPhoneNumber'].value | [0]" -o tsv 2>/dev/null || true)
+          echo "phone=$PHONE" >> "$GITHUB_OUTPUT"
+          echo "Current AcsPhoneNumber: ${PHONE:-<not set>}"
+
+      - name: Deploy both Container Apps in parallel
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_ADMIN }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_ADMIN }}:${{ github.sha }} &
+          PID_ADMIN=$!
+
+          CALLER_ARGS="--name ${{ env.CONTAINER_APP_CALLER }} --resource-group ${{ env.RESOURCE_GROUP }} --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_CALLER }}:${{ github.sha }}"
+          PHONE="${{ steps.acs-phone.outputs.phone }}"
+          if [ -n "$PHONE" ]; then
+            CALLER_ARGS="$CALLER_ARGS --set-env-vars AcsPhoneNumber=$PHONE"
+          fi
+          az containerapp update $CALLER_ARGS &
+          PID_CALLER=$!
+
+          wait $PID_ADMIN || exit 1
+          wait $PID_CALLER || exit 1
+
+      - name: Ensure EventGrid subscriptions
+        run: |
+          CALLER_FQDN=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_CALLER }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+
+          # 1. IncomingCall subscription (routes IncomingCall → /api/incomingCall)
+          az eventgrid system-topic event-subscription create \
+            --name incoming-call-to-caller-agent \
+            --system-topic-name evgt-contactcenteragent-acs \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --endpoint "https://${CALLER_FQDN}/api/incomingCall" \
+            --included-event-types Microsoft.Communication.IncomingCall \
+            --event-delivery-schema eventgridschema \
+            2>&1 || echo "EventGrid IncomingCall subscription may already exist"
+
+      - name: Print deployment info
+        run: |
+          ADMIN_FQDN=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_ADMIN }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "unknown")
+          CALLER_FQDN=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_CALLER }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "unknown")
+          echo "### 🚀 Deployed v${{ env.APP_VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Admin Chat: https://$ADMIN_FQDN" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Caller Agent: https://$CALLER_FQDN" >> "$GITHUB_STEP_SUMMARY"

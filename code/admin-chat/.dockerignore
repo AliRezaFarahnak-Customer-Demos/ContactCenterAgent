@@ -1,0 +1,7 @@
+node_modules/
+.next/
+agent/bin/
+agent/obj/
+.git/
+.azure/
+*.md
