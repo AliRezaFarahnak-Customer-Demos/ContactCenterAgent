@@ -151,7 +151,8 @@ const activeCount = computed(
     </div>
 
     <!-- ============== CENTER — CHAT ============== -->
-    <div class="flex-1 flex flex-col h-full min-w-0 pt-12">
+    <!-- lg:pr-32 / xl:pr-48 compensates for asymmetric side columns (right=28rem, left=20rem; right=32rem on xl) so the chat is centered relative to the viewport, not the middle column. -->
+    <div class="flex-1 flex flex-col h-full min-w-0 pt-12 lg:pr-32 xl:pr-48">
       <div ref="chatContainer" class="flex-1 overflow-y-auto">
         <div
           class="px-4 py-6 space-y-4 max-w-3xl mx-auto"
