@@ -113,3 +113,32 @@ Official Norlys "Brand O" favicon set — **do NOT replace**:
 ### Tone of Voice
 
 Danish UI: enkelhed, handlekraft, optimisme. English for code/errors.
+
+---
+
+## Future Improvements (backlog)
+
+### Better phone-call transcripts in admin UI
+
+The transcripts shown in the admin chat (Voice Live `input_audio_transcription` →
+`whisper-1`) often look poor on real phone calls because PSTN audio is **8 kHz
+G.711 narrowband** — Whisper / gpt-4o-transcribe were trained mostly on
+wideband mic audio, so WER roughly doubles on telephony. The same models
+look great in `console-demo-voicelive/` because that uses the laptop mic at
+24 kHz.
+
+Note: this only affects the **displayed transcript**. `gpt-realtime-1.5` has its
+own native multilingual ASR and usually understands the caller correctly even
+when the whisper sidecar transcript is garbled (per the official Realtime API
+spec: "the transcript can diverge somewhat from the model's interpretation, and
+should be treated as a rough guide").
+
+**Possible fix:** fork the ACS audio stream in `AcsMediaStreamingHandler` and
+run a parallel **Azure AI Speech (Speech-to-Text) telephony recognizer** for
+the admin-UI transcript only. Azure Speech has a dedicated 8 kHz telephony
+model trained for Danish call-center audio and would give "console-app
+quality" transcripts on the phone UI. Voice Live's `input_audio_transcription`
+field does NOT accept `azure-speech` when the model is `gpt-realtime`, so the
+parallel-stream approach is the only way.
+
+Estimated effort: a few hundred LOC + extra Speech resource cost.
