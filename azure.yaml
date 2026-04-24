@@ -57,7 +57,7 @@ services:
           if (-not $count) { $count = 0 }
           $sha = (git rev-parse --short HEAD 2>$null)
           if (-not $sha) { $sha = "local" }
-          $version = "1.0.$count+$sha"
+          $version = "1.0.$count-$sha"
           Write-Host "Setting BUILD_NUMBER=$count APP_VERSION=$version"
           azd env set BUILD_NUMBER $count | Out-Null
           azd env set APP_VERSION $version | Out-Null

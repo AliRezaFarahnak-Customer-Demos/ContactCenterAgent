@@ -1,7 +1,42 @@
-node_modules/
-.next/
+# ---------------------------------------------------------------------------
+# Allowlist style: ignore everything, then explicitly un-ignore only what
+# the Dockerfile COPYs. Guarantees minimal upload to remote ACR build.
+# ---------------------------------------------------------------------------
+
+# Ignore everything by default
+**
+
+# --- Files we need ---
+!Dockerfile
+!package.json
+!package-lock.json
+!nuxt.config.ts
+!tsconfig.json
+!tailwind.config.ts
+!app.vue
+
+# --- Folders we need ---
+!pages/
+!pages/**
+!components/
+!components/**
+!composables/
+!composables/**
+!server/
+!server/**
+!assets/
+!assets/**
+!public/
+!public/**
+!plugins/
+!plugins/**
+!agent/
+!agent/**
+
+# --- Re-exclude junk inside allowed folders ---
 agent/bin/
 agent/obj/
-.git/
-.azure/
-*.md
+**/*.user
+**/*.suo
+**/.DS_Store
+**/Thumbs.db

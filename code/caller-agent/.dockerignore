@@ -1,5 +1,26 @@
+# ---------------------------------------------------------------------------
+# Allowlist style: ignore everything, then un-ignore only what the Dockerfile
+# needs (the agent/ project sources). Build outputs and local-dev secrets
+# are explicitly re-excluded.
+# ---------------------------------------------------------------------------
+
+# Ignore everything by default
+**
+
+# --- Files we need ---
+!Dockerfile
+
+# --- Folders we need ---
+!agent/
+!agent/**
+
+# --- Re-exclude junk inside allowed folders ---
 agent/bin/
 agent/obj/
-.git/
-.azure/
-*.md
+agent/appsettings.Development.json
+agent/.vs/
+agent/Properties/launchSettings.json
+**/*.user
+**/*.suo
+**/.DS_Store
+**/Thumbs.db

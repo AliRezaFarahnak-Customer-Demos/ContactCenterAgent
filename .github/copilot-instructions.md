@@ -36,6 +36,9 @@ cd code/caller-agent/agent && dotnet run --urls "http://localhost:5000"
 ```
 
 - **NEVER build Docker locally** (ARM64 dev machine). Use `azd deploy` or `az acr build`.
+  - `azd up` / `azd deploy` use **remote ACR build by default** — the build runs in Azure, but the source tarball is uploaded from the dev machine. On flaky internet, the upload is the bottleneck, not the build.
+  - Keep `.dockerignore` tight in each service (`node_modules`, `bin/`, `obj/`, `.nuxt/`, `.output/`, `dist/`, `.git/`) to keep uploads small.
+  - Fallback for unstable connections: `az acr build -r <acr> -t <image>:latest -f <Dockerfile> <context>` (streams logs, no azd state).
 - **azd ≥ 1.24.1** required (1.23.6 has BlobNotFound bug).
 - Set `ASPNETCORE_ENVIRONMENT=Development` for user-secrets to load.
 
