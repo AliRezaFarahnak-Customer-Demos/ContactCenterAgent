@@ -27,15 +27,15 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: "AI Call Center",
+      title: "CallCenter Demo",
       meta: [
         {
           name: "description",
           content:
-            "Orchestrate AI callers, track outcomes \u2014 or just call a friend.",
+            "AI-drevet kundeservice — onboarding, regningsforklaring og MFA-verifikation.",
         },
         // Open Graph — social sharing (LinkedIn, Twitter, etc.)
-        { property: "og:title", content: "AI Call Center" },
+        { property: "og:title", content: "CallCenter Demo" },
         {
           property: "og:description",
           content:

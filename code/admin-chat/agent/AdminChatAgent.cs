@@ -160,8 +160,15 @@ public class AdminChatAgentFactory
                 - Help configure and troubleshoot agent apps
                 - Provide guidance on Azure AI Foundry and Container Apps
                 - **Make outbound AI phone calls** — when the admin asks you to call
-                  someone, use the MakePhoneCall tool with country code, phone number,
-                  and topic. The AI caller agent will have a live voice conversation.
+                  someone, choose the right tool:
+                  * `CallCustomerForOnboarding` — guide a new customer through
+                    router / fiber installation. Always uses Danish + MFA.
+                  * `CallCustomerAboutInvoice` — explain a customer's latest bill.
+                    Always uses Danish + MFA.
+                  * `MakePhoneCall` — generic call when no persona fits, you control
+                    language and purpose.
+                  All call tools start with mandatory identity verification (MFA)
+                  using the verification facts you pass in.
 
                 Be concise, professional, and helpful. Use markdown formatting where
                 appropriate. If you don't know something, say so clearly.",
@@ -172,6 +179,8 @@ public class AdminChatAgentFactory
                 AIFunctionFactory.Create(GetPlatformInfo),
                 AIFunctionFactory.Create(QueryAppInsights),
                 AIFunctionFactory.Create(MakePhoneCall),
+                AIFunctionFactory.Create(CallCustomerForOnboarding),
+                AIFunctionFactory.Create(CallCustomerAboutInvoice),
             ])
             .AsBuilder()
             .UseOpenTelemetry(SourceName, configure: cfg => cfg.EnableSensitiveData = true)
@@ -330,6 +339,154 @@ public class AdminChatAgentFactory
             {
                 return new PhoneCallResult(false, fullNumber, $"Failed to initiate call (HTTP {(int)response.StatusCode}): {responseBody}");
             }
+        }
+        catch (Exception ex)
+        {
+            return new PhoneCallResult(false, fullNumber, $"Error initiating call: {ex.Message}");
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // Persona-based call tools — onboarding & invoice
+    // -------------------------------------------------------------------
+
+    private const string OnboardingInstructions = @"Du er en venlig tekniksupporter, der ringer til en ny kunde for at hjælpe dem i gang med deres internetforbindelse og router.
+
+Dit mål med samtalen:
+1. Bekræft, at routeren og fiberboksen er pakket ud og strømmen er tilsluttet.
+2. Guid kunden trin-for-trin gennem opsætningen:
+   - Tilslut fiberkablet i WAN-porten på routeren.
+   - Tænd routeren og vent ~2 minutter på, at lampen lyser konstant grønt.
+   - Forbind telefon eller computer til Wi-Fi'et (navn og kode står på undersiden af routeren).
+3. Spørg om alt virker, og lav en hurtig hastighedstest hvis muligt.
+4. Tilbyd at booke en tekniker hvis noget ikke virker.
+
+Hvis kunden allerede er online, ros dem og afslut høfligt.";
+
+    private const string InvoiceInstructions = @"Du er en venlig kundeservicemedarbejder, der ringer til en kunde for at gennemgå deres seneste regning, fordi kunden har anmodet om en forklaring.
+
+Dit mål med samtalen:
+1. Forklar at du ringer ift. den seneste faktura.
+2. Gennemgå hovedposterne på regningen ud fra konteksten:
+   - Abonnement / fast pris
+   - Forbrug (el / gas / internet alt efter produkt)
+   - Eventuelle gebyrer eller engangsbeløb
+3. Svar på spørgsmål, og hvis kunden er uenig, tilbyd at oprette en sag til deres regningsteam.
+4. Mind kunden om, at de altid kan se detaljer på selvbetjeningen.
+
+Vær empatisk hvis kunden er overrasket over beløbet.";
+
+    [Description("Call a new customer in Danish to walk them through onboarding and modem/router installation. Begins with mandatory identity verification (MFA) using the supplied verification facts before any technical guidance. Use this when the admin asks to onboard a customer, help install a modem/router, or set up a fiber connection.")]
+    private static Task<PhoneCallResult> CallCustomerForOnboarding(
+        [Description("Customer's first name (used by the AI to greet them)")] string customerName,
+        [Description("Country calling code without '+' (e.g. '45' for Denmark). Defaults to '45'.")] string countryCode,
+        [Description("Phone number without country code (e.g. '80719050'). Whitespace and dashes are stripped automatically.")] string phoneNumber,
+        [Description("Verification facts on file used for MFA. Free-text — typically 1–3 lines, e.g. 'Adresse: Hovedgaden 12, 8000 Aarhus C\\nEmail: kunde@example.dk'. The AI will ask 1–2 light security questions based on these BEFORE proceeding with the call topic.")] string verificationFacts,
+        [Description("Optional extra context the AI should know about the customer's order (router model, fiber speed, ship date, etc.). Leave empty if not known.")] string notes = "")
+    {
+        return PlacePersonaCall(
+            personaLabel: "Onboarding & modem-installation",
+            personaInstructions: OnboardingInstructions,
+            customerName: customerName,
+            countryCode: countryCode,
+            phoneNumber: phoneNumber,
+            verificationFacts: verificationFacts,
+            notes: notes);
+    }
+
+    [Description("Call a customer in Danish to explain their latest invoice / bill. Begins with mandatory identity verification (MFA) using the supplied verification facts before any billing details are discussed. Use this when the admin asks to call a customer about an invoice, regning, faktura, or bill.")]
+    private static Task<PhoneCallResult> CallCustomerAboutInvoice(
+        [Description("Customer's first name (used by the AI to greet them)")] string customerName,
+        [Description("Country calling code without '+' (e.g. '45' for Denmark). Defaults to '45'.")] string countryCode,
+        [Description("Phone number without country code (e.g. '80719050'). Whitespace and dashes are stripped automatically.")] string phoneNumber,
+        [Description("Verification facts on file used for MFA. Free-text — typically 1–3 lines, e.g. 'Adresse: Søndergade 4, 9000 Aalborg\\nEmail: kunde@example.dk'. The AI will ask 1–2 light security questions based on these BEFORE discussing the bill.")] string verificationFacts,
+        [Description("Invoice details to explain — amount, period, line items. E.g. 'November 2025: 1842 kr — 1290 kr forbrug, 450 kr abonnement, 102 kr afgifter'. The AI uses this when explaining the bill.")] string invoiceDetails)
+    {
+        return PlacePersonaCall(
+            personaLabel: "Forklaring af regning",
+            personaInstructions: InvoiceInstructions,
+            customerName: customerName,
+            countryCode: countryCode,
+            phoneNumber: phoneNumber,
+            verificationFacts: verificationFacts,
+            notes: invoiceDetails);
+    }
+
+    /// <summary>
+    /// Shared helper: builds the persona + MFA system prompt and POSTs to the caller agent.
+    /// Keeps the same prompt structure as <c>server/api/norlys-call.post.ts</c>.
+    /// </summary>
+    private static async Task<PhoneCallResult> PlacePersonaCall(
+        string personaLabel,
+        string personaInstructions,
+        string customerName,
+        string countryCode,
+        string phoneNumber,
+        string verificationFacts,
+        string notes)
+    {
+        if (string.IsNullOrEmpty(_callerAgentUrl))
+            return new PhoneCallResult(false, null, "Caller agent URL is not configured (CallerAgent:Url).");
+
+        var cc = (string.IsNullOrWhiteSpace(countryCode) ? "45" : countryCode)
+            .Replace(" ", "").Replace("\t", "").TrimStart('+');
+        var local = phoneNumber.Replace(" ", "").Replace("\t", "").Replace("-", "").TrimStart('0');
+        var fullNumber = $"+{cc}{local}";
+
+        var facts = string.IsNullOrWhiteSpace(verificationFacts) ? "(none provided)" : verificationFacts.Trim();
+        var notesBlock = string.IsNullOrWhiteSpace(notes) ? "" : $"## Yderligere kontekst:\n{notes.Trim()}\n\n";
+
+        var systemPrompt =
+            $"Du er en AI-kundeservicemedarbejder, der ringer til {customerName} på {fullNumber}.\n\n" +
+            $"## Din rolle: {personaLabel}\n{personaInstructions.Trim()}\n\n" +
+            "## OBLIGATORISK identitetsverifikation (MFA) — DETTE FØRST\n" +
+            "Før du diskuterer NOGEN kontooplysninger, regningsinformation, teknisk opsætning eller andet følsomt, SKAL du verificere kundens identitet.\n" +
+            "Åbn samtalen med kort at forklare hvorfor: \"For at beskytte din konto skal jeg lige stille et par hurtige sikkerhedsspørgsmål, før vi går videre.\"\n" +
+            "Stil derefter 1–2 lette spørgsmål baseret på fakta nedenfor (fx \"Kan du bekræfte din adresse?\" eller \"Hvilken e-mail har vi registreret på dig?\"). Stil ét ad gangen.\n" +
+            "Hvis svaret matcher de registrerede fakta, bekræft og fortsæt. Hvis det IKKE matcher efter to forsøg, forklar høfligt at du ikke kan fortsætte og afslut samtalen.\n" +
+            "Læs ALDRIG svarene højt, og fortsæt ALDRIG til hovedemnet før verifikationen er bestået.\n\n" +
+            $"### Verifikationsfakta på fil (FORTROLIGE — må aldrig læses op):\n{facts}\n\n" +
+            notesBlock +
+            "## Stil\n" +
+            "- Tal naturligt og varmt på dansk.\n" +
+            "- Hold ture korte og samtaleagtige.\n" +
+            "- Hvis kunden vil tale med et menneske, tilbyd at oprette en sag eller en tilbagekald.";
+
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                phoneNumber = fullNumber,
+                purpose = personaLabel,
+                systemPrompt,
+                name = customerName,
+                language = "Danish",
+                languageCode = "da",
+                transcriptionHint = "Hej, ja, nej, adresse, e-mail, faktura, regning, router, internet, fiber, tak, hej hej",
+            });
+
+            var url = $"{_callerAgentUrl.TrimEnd('/')}/api/outboundCall";
+            var content = new StringContent(payload, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(url, content);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                return new PhoneCallResult(false, fullNumber, $"Failed to initiate call (HTTP {(int)response.StatusCode}): {body}");
+
+            string? callId = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("contextId", out var ctx))
+                    callId = ctx.GetString();
+            }
+            catch { }
+
+            return new PhoneCallResult(
+                true,
+                fullNumber,
+                $"Call initiated to {fullNumber} ({personaLabel}). The AI will start with MFA verification before proceeding.",
+                callId);
         }
         catch (Exception ex)
         {
