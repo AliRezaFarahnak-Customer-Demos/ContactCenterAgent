@@ -68,8 +68,8 @@ services:
       context: .
       remoteBuild: true
       buildArgs:
-        - APP_VERSION=${APP_VERSION:-0.0.0-local}
-        - BUILD_NUMBER=${BUILD_NUMBER:-0}
+        - APP_VERSION=${APP_VERSION}
+        - BUILD_NUMBER=${BUILD_NUMBER}
         - NUXT_PUBLIC_SITE_URL=${ADMIN_CHAT_APP_URL}
         - NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
 
