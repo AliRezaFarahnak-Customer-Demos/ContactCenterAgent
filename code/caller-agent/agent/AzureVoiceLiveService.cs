@@ -218,6 +218,12 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                 m_logger.LogInformation("Language instruction appended to system prompt: {Language}", m_language);
             }
 
+            // Detect Danish (or any non-English-family language) so we can tune VAD/transcription accordingly.
+            // azure_semantic_vad_multilingual officially supports EN/ES/FR/IT/DE/JA/PT/ZH/KO/HI — Danish falls back.
+            // The English-only filler-word remover (remove_filler_words) adds latency without benefit for Danish callers.
+            var isEnglish = string.IsNullOrEmpty(m_languageCode)
+                || m_languageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+
             var jsonObject = new
             {
                 type = "session.update",
@@ -227,17 +233,29 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                     turn_detection = new
                     {
                         type = "azure_semantic_vad_multilingual",
-                        threshold = 0.4,
+                        // Defaults from spec: threshold=0.5, prefix_padding=300, silence_duration=500.
+                        // For phone-quality Danish we relax silence_duration so natural pauses
+                        // ("øh… altså…") don't trigger premature end-of-turn.
+                        threshold = 0.5,
                         prefix_padding_ms = 300,
-                        silence_duration_ms = 400,
-                        remove_filler_words = true,
+                        silence_duration_ms = isEnglish ? 500 : 700,
+                        // Filler-word list is English-only per docs — keep ON for English, OFF otherwise.
+                        remove_filler_words = isEnglish,
+                        // Multilingual semantic EOU detection — drastically reduces false end-of-turn
+                        // signals during natural pauses, supports the same 10 languages as multilingual VAD.
+                        end_of_utterance_detection = new
+                        {
+                            model = "semantic_detection_v1_multilingual",
+                            threshold_level = "medium",
+                            timeout_ms = 1500
+                        },
                         interrupt_response = true,
                         auto_truncate = true
                     },
                     max_response_output_tokens = 300,
                     input_audio_noise_reduction = new { type = "azure_deep_noise_suppression" },
                     input_audio_echo_cancellation = new { type = "server_echo_cancellation" },
-                    input_audio_transcription = BuildTranscriptionConfig(m_languageCode, m_transcriptionHint),
+                    input_audio_transcription = BuildTranscriptionConfig(m_configuration, m_languageCode, m_transcriptionHint, m_logger),
                     voice = BuildVoiceConfig(m_configuration, m_logger),
                     tools = new[]
                     {
@@ -324,23 +342,91 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
         }
 
         /// <summary>
-        /// Build the transcription config using whisper-1 for speech-to-text.
-        /// Includes an ISO 639-1 language hint when a language code is provided (classified by the AI at tool-call time).
-        /// The prompt accepts a list of keywords/phrases to guide transcription vocabulary.
+        /// Build the input_audio_transcription config for the Voice Live session.
+        ///
+        /// Per the official 2025-10-01 spec, with gpt-realtime the only supported transcription
+        /// models are: whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, gpt-4o-transcribe-diarize.
+        /// (azure-speech is NOT supported for gpt-realtime — only for non-realtime models.)
+        ///
+        /// IMPORTANT: this transcript is a SEPARATE async pass on the audio — it is NOT what the
+        /// gpt-realtime model itself "hears". The model has its own native multilingual STT and is
+        /// usually more accurate than whichever transcription model we pick here. Per OpenAI docs:
+        /// "the transcript can diverge somewhat from the model's interpretation, and should be
+        /// treated as a rough guide." That's why the AI sometimes answers correctly even when the
+        /// transcript shown in the UI looks wrong.
+        ///
+        /// Model choice for Danish customer service (April 2026):
+        ///   - whisper-1            — older, well-tested. Tends to do better on SHORT phone-call
+        ///                            utterances and is the safer default for Danish, because the
+        ///                            newer gpt-4o-transcribe family has well-documented truncation
+        ///                            and over-eager-decoder issues on short audio (community
+        ///                            reports since Oct 2025). Supports 'language' and 'prompt'.
+        ///   - gpt-4o-transcribe    — newer, lower WER on FLEURS benchmark (incl. Danish), better
+        ///                            on long-form clean audio and on accents. Designed for call
+        ///                            centers. Supports 'language' and 'prompt'.
+        ///   - gpt-4o-mini-transcribe — cheaper, lower quality.
+        ///
+        /// Make it overridable via Transcription:Model in appsettings so we can A/B test per call
+        /// without redeploying.
+        ///
+        /// 'language' accepts BCP-47 ("da-DK") or ISO-639-1 ("da"). BCP-47 is more specific and
+        /// is what Azure recommends. We promote bare "da" → "da-DK".
+        ///
+        /// 'prompt' is a free-text vocabulary bias for the Whisper / gpt-4o-transcribe family.
+        /// Even short Danish keyword lists (caller name, address, product names) materially
+        /// improve recognition of the things callers actually say in customer service.
         /// </summary>
-        private static Dictionary<string, object> BuildTranscriptionConfig(string? languageCode, string? transcriptionHint)
+        private static Dictionary<string, object> BuildTranscriptionConfig(
+            IConfiguration configuration,
+            string? languageCode,
+            string? transcriptionHint,
+            ILogger logger)
         {
-            var config = new Dictionary<string, object> { ["model"] = "whisper-1" };
+            // Default whisper-1 (best subjective quality on short Danish phone calls today).
+            // Override with Transcription:Model = "gpt-4o-transcribe" or "gpt-4o-mini-transcribe".
+            var model = configuration.GetValue<string>("Transcription:Model") ?? "whisper-1";
 
-            if (!string.IsNullOrEmpty(languageCode))
+            var config = new Dictionary<string, object> { ["model"] = model };
+
+            // Promote ISO-639-1 "da" to BCP-47 "da-DK" for Danish.
+            // Promote bare "en" to "en-US" similarly.
+            var lang = languageCode;
+            if (string.Equals(lang, "da", StringComparison.OrdinalIgnoreCase)) lang = "da-DK";
+            else if (string.Equals(lang, "en", StringComparison.OrdinalIgnoreCase)) lang = "en-US";
+
+            if (!string.IsNullOrEmpty(lang))
             {
-                config["language"] = languageCode;
+                config["language"] = lang;
             }
 
-            if (!string.IsNullOrEmpty(transcriptionHint))
+            // Build the vocabulary prompt. Caller-supplied hint wins; otherwise fall back to a
+            // sensible default per language so we never send empty bias.
+            var prompt = transcriptionHint;
+            if (string.IsNullOrEmpty(prompt))
             {
-                config["prompt"] = transcriptionHint;
+                prompt = configuration.GetValue<string>($"Transcription:DefaultPrompt:{lang}")
+                      ?? configuration.GetValue<string>("Transcription:DefaultPrompt:Default");
+
+                // Hard-coded fallback for Danish customer service if nothing in config.
+                if (string.IsNullOrEmpty(prompt) && (lang?.StartsWith("da", StringComparison.OrdinalIgnoreCase) ?? false))
+                {
+                    prompt = "Dansk kundeservicesamtale for Norlys (energi, fiber, internet, mobil). "
+                           + "Almindelige ord: Norlys, fiber, fiberboks, router, modem, WAN-port, Wi-Fi, "
+                           + "el, gas, kWh, abonnement, faktura, regning, betaling, MitID, NemKonto, "
+                           + "selvbetjening, tekniker, hastighedstest, opsigelse, flytning. "
+                           + "Danske byer: København, Aarhus, Odense, Aalborg, Esbjerg, Randers. "
+                           + "Talte tal og adresser udskrives som de siges.";
+                }
             }
+
+            if (!string.IsNullOrEmpty(prompt))
+            {
+                config["prompt"] = prompt;
+            }
+
+            logger.LogInformation(
+                "Transcription config: model={Model}, language={Language}, promptLen={PromptLen}",
+                model, lang ?? "(auto)", prompt?.Length ?? 0);
 
             return config;
         }
