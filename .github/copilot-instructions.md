@@ -51,7 +51,7 @@ A multi-agent management platform powered by Azure AI Foundry and Azure Containe
 | Layer      | Technology                                                     |
 | ---------- | -------------------------------------------------------------- |
 | Runtime    | Azure Container Apps (.NET 10 backend + Nuxt 3 Vue frontend)   |
-| AI Backend | Azure AI Foundry (`AIServices` kind, S0) — GPT-5.4-nano             |
+| AI Backend | Azure AI Foundry (`AIServices` kind, S0) — GPT-5.4-nano        |
 | Frontend   | Vue 3 + Nuxt 3 (direct AG-UI protocol over SSE, no CopilotKit) |
 | Storage    | Azure Storage Account (Table Storage for agent data)           |
 | IaC        | Bicep (subscription-scoped `main.bicep` → `resources.bicep`)   |
@@ -64,7 +64,7 @@ A multi-agent management platform powered by Azure AI Foundry and Azure Containe
 | Resource Group     | `rg-contactcenteragent`       | All resources under one RG                             |
 | AI Foundry         | `cog-contactcenteragent`      | `AIServices` kind, S0, Managed Identity                |
 | AI Foundry Project | `cog-contactcenteragent-prj`  | Child of AI Foundry account                            |
-| Model Deployment   | `gpt-5.4-nano`                     | GPT-5.4-nano, GlobalStandard, capacity 1000                 |
+| Model Deployment   | `gpt-5.4-nano`                | GPT-5.4-nano, GlobalStandard, capacity 1000            |
 | Model Deployment   | `gpt-realtime`                | gpt-realtime-1.5 (2026-02-23), GlobalStandard, cap 10  |
 | Storage Account    | `stcontactcenteragent`        | Standard_LRS, Table Storage                            |
 | Container Registry | `crcontactcenteragent`        | Standard SKU, admin enabled                            |
@@ -582,4 +582,3 @@ Hard-earned lessons from debugging sessions — **read before making changes**.
 - Current tunnel: `https://<your-subdomain>-5000.<region>.devtunnels.ms` (maps to localhost:5000)
 - Must be running (`devtunnel host`) before placing calls locally.
 - The tunnel URL is set via `$env:VS_TUNNEL_URL` when starting the caller agent.
-
