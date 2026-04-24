@@ -229,9 +229,10 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                         type = "azure_semantic_vad_multilingual",
                         threshold = 0.4,
                         prefix_padding_ms = 300,
-                        silence_duration_ms = 600,
-                        remove_filler_words = false,
-                        eagerness = "low"
+                        silence_duration_ms = 400,
+                        remove_filler_words = true,
+                        interrupt_response = true,
+                        auto_truncate = true
                     },
                     max_response_output_tokens = 300,
                     input_audio_noise_reduction = new { type = "azure_deep_noise_suppression" },
