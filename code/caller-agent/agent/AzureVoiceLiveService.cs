@@ -229,6 +229,11 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                 type = "session.update",
                 session = new
                 {
+                    // Pin the contract explicitly so future server-side default changes can't drift on us.
+                    // gpt-realtime-1.5 supports both modalities; ACS streams 16-bit PCM mono → pcm16 both ways.
+                    modalities = new[] { "audio", "text" },
+                    input_audio_format = "pcm16",
+                    output_audio_format = "pcm16",
                     instructions = effectivePrompt,
                     turn_detection = new
                     {
