@@ -206,18 +206,14 @@ jobs:
           # Dockerfile COPYs .version.json into the build; locally azd's
           # prepackage hook writes it. In CI we must create it ourselves
           # or `docker build` fails on the COPY step.
+          # Schema must match nuxt.config.ts: { appVersion, buildNumber }.
           COMMIT_COUNT=$(git rev-list --count HEAD)
           SHORT_SHA=$(git rev-parse --short HEAD)
-          VERSION="1.0.${COMMIT_COUNT}-${SHORT_SHA}"
-          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          APP_VERSION="1.0.${COMMIT_COUNT}-${SHORT_SHA}"
           cat > code/admin-chat/.version.json <<EOF
-          {
-            "version": "${VERSION}",
-            "commit": "${SHORT_SHA}",
-            "buildTime": "${BUILD_TIME}"
-          }
+          {"appVersion":"${APP_VERSION}","buildNumber":"${COMMIT_COUNT}"}
           EOF
-          echo "Stamped admin-chat version: ${VERSION}"
+          echo "Stamped admin-chat version: ${APP_VERSION}"
 
       - name: Build & push ${{ matrix.service }}
         uses: docker/build-push-action@v6
