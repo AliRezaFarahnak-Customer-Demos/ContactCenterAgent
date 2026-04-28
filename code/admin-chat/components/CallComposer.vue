@@ -1,21 +1,15 @@
 <script setup lang="ts">
 /**
- * CallComposer
+ * CallComposer — simplified demo UI.
  *
- * The persona prompt + ALL composer field defaults are the single source of
- * truth on the backend (/api/personas). On mount we load them. Whenever the
- * user types, we wait 1 second of inactivity and PUT the changes back, so a
- * page reload always shows exactly what was last typed.
- *
- * Only `personaId` + the per-call values (customer name, phone, fact / notes
- * overrides) are emitted upward. The full system prompt is resolved
- * server-side from the persona at call time.
+ * One textarea = the entire system prompt (no separate name / MFA / notes
+ * fields). Switching scenarios swaps the prompt. Click Call → emit current
+ * values verbatim. Reload = reset to defaults.
  */
 import {
-    loadPersonas,
-    savePersona,
-    usePersonas,
-    type CallPersona,
+  loadPersonas,
+  usePersonas,
+  type CallPersona,
 } from "~/composables/useCallPersonas";
 
 const emit = defineEmits<{
@@ -23,11 +17,9 @@ const emit = defineEmits<{
     payload: {
       personaId: string;
       personaLabel: string;
-      customerName: string;
       countryCode: string;
       phoneNumber: string;
-      verificationFacts: string;
-      notes: string;
+      prompt: string;
       language: string;
       languageCode: string;
     },
@@ -39,101 +31,22 @@ const personaId = ref<string>("");
 const isLoading = ref(true);
 const isCalling = ref(false);
 const lastError = ref<string | null>(null);
-const saveStatus = ref<"idle" | "saving" | "saved">("idle");
 
 const persona = computed<CallPersona | undefined>(() =>
   personas.value.find((p) => p.id === personaId.value),
 );
 
-const customerName = ref("");
 const countryCode = ref("");
 const phoneNumber = ref("");
-const verificationFacts = ref("");
-const notes = ref("");
 const promptText = ref("");
 
-// Suspend the auto-save watcher while we hydrate from a freshly loaded persona,
-// otherwise we'd PUT back exactly what we just GOT.
-let suspendSave = true;
-
 function hydrateFromPersona(p: CallPersona) {
-  suspendSave = true;
-  customerName.value = p.customerName;
   countryCode.value = p.countryCode;
   phoneNumber.value = p.phoneNumber;
-  verificationFacts.value = p.verificationFacts;
-  notes.value = p.notes;
   promptText.value = p.prompt;
-  nextTick(() => {
-    suspendSave = false;
-  });
 }
 
-// Debounced save: 1s of inactivity → PUT all editable fields.
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-async function flushSaveNow() {
-  if (!persona.value) return;
-  await savePersona(persona.value.id, {
-    customerName: customerName.value,
-    countryCode: countryCode.value,
-    phoneNumber: phoneNumber.value,
-    verificationFacts: verificationFacts.value,
-    notes: notes.value,
-    prompt: promptText.value,
-  });
-}
-function scheduleSave() {
-  if (suspendSave || !persona.value) return;
-  saveStatus.value = "saving";
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    try {
-      await flushSaveNow();
-      saveStatus.value = "saved";
-      setTimeout(() => {
-        if (saveStatus.value === "saved") saveStatus.value = "idle";
-      }, 1500);
-    } catch (err) {
-      saveStatus.value = "idle";
-      lastError.value =
-        err instanceof Error ? err.message : "Kunne ikke gemme ændringer";
-    }
-  }, 1000);
-}
-
-watch(
-  [
-    customerName,
-    countryCode,
-    phoneNumber,
-    verificationFacts,
-    notes,
-    promptText,
-  ],
-  scheduleSave,
-);
-
-watch(personaId, async (newId, oldId) => {
-  // Flush pending edits to the OLD persona before we overwrite the form.
-  if (oldId && saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-    const stalePersona = personas.value.find((x) => x.id === oldId);
-    if (stalePersona) {
-      try {
-        await savePersona(oldId, {
-          customerName: customerName.value,
-          countryCode: countryCode.value,
-          phoneNumber: phoneNumber.value,
-          verificationFacts: verificationFacts.value,
-          notes: notes.value,
-          prompt: promptText.value,
-        });
-      } catch {
-        /* non-fatal */
-      }
-    }
-  }
+watch(personaId, (newId) => {
   const p = personas.value.find((x) => x.id === newId);
   if (p) hydrateFromPersona(p);
 });
@@ -158,7 +71,7 @@ const canCall = computed(
     !isCalling.value &&
     !isLoading.value &&
     !!persona.value &&
-    customerName.value.trim().length > 0 &&
+    promptText.value.trim().length > 0 &&
     phoneNumber.value.replace(/\D/g, "").length >= 6,
 );
 
@@ -166,28 +79,13 @@ async function startCall() {
   if (!canCall.value || !persona.value) return;
   isCalling.value = true;
   lastError.value = null;
-
-  // Flush any pending edit before placing the call so the backend resolves the
-  // prompt with the latest text.
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-    try {
-      await flushSaveNow();
-    } catch {
-      /* fall through — emit anyway */
-    }
-  }
-
   try {
     emit("call", {
       personaId: persona.value.id,
       personaLabel: persona.value.label,
-      customerName: customerName.value.trim(),
       countryCode: countryCode.value,
       phoneNumber: phoneNumber.value,
-      verificationFacts: verificationFacts.value,
-      notes: notes.value,
+      prompt: promptText.value,
       language: persona.value.language,
       languageCode: persona.value.languageCode,
     });
@@ -240,16 +138,6 @@ const vAutosize = {
       <span class="font-headline text-lg font-bold text-norlys-petroleum-3"
         >Ny opringning</span
       >
-      <span
-        v-if="saveStatus === 'saving'"
-        class="ml-auto text-xs text-norlys-petroleum/60"
-        >Gemmer…</span
-      >
-      <span
-        v-else-if="saveStatus === 'saved'"
-        class="ml-auto text-xs text-norlys-petroleum/60"
-        >Gemt ✓</span
-      >
     </div>
 
     <div
@@ -291,22 +179,6 @@ const vAutosize = {
             </p>
           </button>
         </div>
-      </div>
-
-      <!-- Customer name -->
-      <div>
-        <label
-          for="composer-customer-name"
-          class="text-sm font-semibold text-norlys-petroleum uppercase tracking-wide"
-          >Kundenavn</label
-        >
-        <input
-          id="composer-customer-name"
-          v-model="customerName"
-          type="text"
-          placeholder="fx Mette Hansen"
-          class="mt-2 w-full px-3 py-2.5 text-base border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30"
-        />
       </div>
 
       <!-- Phone number -->
@@ -365,87 +237,22 @@ const vAutosize = {
         </div>
       </div>
 
-      <!-- Verification facts -->
+      <!-- System prompt (single source of truth) -->
       <div>
         <label
-          for="composer-verification"
-          class="text-sm font-semibold text-norlys-petroleum uppercase tracking-wide flex items-center gap-1.5"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-4 h-4 text-norlys-red"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-          MFA — verifikationsfakta
-        </label>
-        <textarea
-          id="composer-verification"
-          v-model="verificationFacts"
-          v-autosize
-          rows="3"
-          placeholder="Adresse: ...&#10;Email: ...&#10;Fødselsdato: ..."
-          class="mt-2 w-full px-3 py-2.5 text-base border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 resize-none"
-        ></textarea>
-        <p class="text-xs text-norlys-petroleum/60 mt-1 leading-snug">
-          Agenten stiller spørgsmål baseret på disse fakta før han diskuterer
-          noget følsomt.
-        </p>
-      </div>
-
-      <!-- Notes -->
-      <div>
-        <label
-          for="composer-notes"
+          for="composer-prompt"
           class="text-sm font-semibold text-norlys-petroleum uppercase tracking-wide"
-          >Kontekst (valgfrit)</label
+          >System prompt</label
         >
         <textarea
-          id="composer-notes"
-          v-model="notes"
-          v-autosize
-          rows="2"
-          placeholder="fx detaljer om kundens ordre, regningsbeløb, ..."
-          class="mt-2 w-full px-3 py-2.5 text-base border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 resize-none"
-        ></textarea>
-      </div>
-
-      <!-- Advanced — full editable system prompt -->
-      <details class="border border-norlys-light-petroleum rounded-lg">
-        <summary
-          class="px-4 py-3 text-sm font-semibold text-norlys-petroleum cursor-pointer select-none uppercase tracking-wide"
-        >
-          Avanceret — system-prompt
-        </summary>
-        <textarea
+          id="composer-prompt"
           v-model="promptText"
           v-autosize
-          rows="16"
-          aria-label="System-prompt"
-          class="w-full px-3 py-3 text-sm border-t border-norlys-light-petroleum bg-white text-norlys-ink focus:outline-none resize-none rounded-b-lg font-mono leading-relaxed"
+          rows="14"
+          aria-label="System prompt"
+          class="mt-2 w-full px-3 py-3 text-sm border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 resize-none font-mono leading-relaxed"
         ></textarea>
-        <p
-          v-pre
-          class="px-3 py-2 text-xs text-norlys-petroleum/60 leading-snug border-t border-norlys-light-petroleum"
-        >
-          Pladsholdere:
-          <code>{{ customerName }}</code
-          >, <code>{{ phoneNumber }}</code
-          >, <code>{{ personaLabel }}</code
-          >, <code>{{ verificationFacts }}</code
-          >, <code>{{ notes }}</code
-          >, <code>{{ language }}</code
-          >. Ændringer gemmes automatisk efter 1 sekund.
-        </p>
-      </details>
+      </div>
     </div>
 
     <!-- Call button -->

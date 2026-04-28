@@ -186,7 +186,7 @@ function showPopover(i: number, event: MouseEvent) {
 
     <!-- Version -->
     <div
-      class="px-3 py-2 border-t border-zinc-200 text-sm text-zinc-800 font-medium tabular-nums text-center select-none"
+      class="px-3 py-2 border-t border-zinc-300 text-base text-zinc-900 font-bold tabular-nums text-center select-none"
     >
       v{{ useRuntimeConfig().public.appVersion }}
     </div>

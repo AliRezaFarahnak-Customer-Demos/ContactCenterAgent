@@ -59,11 +59,9 @@ watch(isLoading, async (loading) => {
 async function startCallFromComposer(payload: {
   personaId: string;
   personaLabel: string;
-  customerName: string;
   countryCode: string;
   phoneNumber: string;
-  verificationFacts: string;
-  notes: string;
+  prompt: string;
   language: string;
   languageCode: string;
 }) {
@@ -86,7 +84,7 @@ async function startCallFromComposer(payload: {
 
     addSession({
       contextId: res.contextId,
-      customerName: payload.customerName,
+      customerName: payload.personaLabel,
       phoneNumber: res.phoneNumber || payload.phoneNumber,
       personaLabel: payload.personaLabel,
       direction: "outbound",

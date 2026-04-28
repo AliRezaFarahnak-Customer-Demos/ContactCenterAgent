@@ -19,15 +19,12 @@ namespace CallAutomation.AzureAI.VoiceLive
         private CancellationTokenSource m_cts;
         private AcsMediaStreamingHandler m_mediaStreaming;
 
-        // Fallback prompt used ONLY when no per-call prompt is supplied (e.g. inbound calls
-        // not initiated through admin-chat). For outbound calls placed via /api/place-call,
-        // the full system prompt comes from the editable persona in the admin-chat backend
-        // and is sent here VERBATIM — no rules are appended.
-        private string m_systemPrompt =
-            "You are a kind, friendly Norlys phone assistant. Speak naturally in the caller's language. " +
-            "Keep replies conversational — typically 1–3 sentences. Ask one question at a time and wait for the answer. " +
-            "Never say you are an AI; if asked, say 'den digitale assistent'. " +
-            "Only end the call with hang_up after the caller has explicitly said goodbye.";
+        // Fallback prompt used ONLY when no per-call prompt is supplied (e.g. inbound
+        // calls not initiated through admin-chat). For outbound demo calls placed via
+        // /api/place-call, the entire system prompt comes from the admin-chat UI and
+        // is sent here VERBATIM. Tool-related instructions live in the tool definitions
+        // themselves, not in this prompt.
+        private string m_systemPrompt = "You are a phone assistant.";
 
 
         private ClientWebSocket m_azureVoiceLiveWebsocket = null!;

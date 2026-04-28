@@ -1,78 +1,43 @@
 /**
  * POST /api/place-call
  *
- * Resolves the persona's editable prompt (loaded from the personas store),
- * substitutes runtime placeholders, and forwards the call to the caller-agent.
+ * Demo flow: the UI owns the entire system prompt. We pass it through
+ * verbatim. Only the phone number is normalized.
  *
- * The forwarded `systemPrompt` is sent to Voice Live VERBATIM — the C# caller
- * agent no longer appends any rules. All wording lives in one place: the
- * persona's `prompt` field, editable from the UI.
- *
- * Request body (sent by CallComposer):
+ * Body:
  *   {
- *     personaId: string,
- *     customerName: string,
- *     phoneNumber: string,           // local, may include spaces
- *     countryCode: string,           // e.g. "45", no leading +
- *     verificationFacts?: string,
- *     notes?: string,
+ *     personaLabel: string,   // shown in call log only
+ *     phoneNumber: string,    // local digits, may include spaces
+ *     countryCode: string,    // e.g. "45", no leading +
+ *     prompt: string,         // full system prompt, sent verbatim to Voice Live
+ *     language: string,       // e.g. "Danish"
+ *     languageCode: string,   // e.g. "da"
  *   }
- *
- * Placeholders supported in persona.prompt:
- *   {{customerName}}, {{phoneNumber}}, {{personaLabel}},
- *   {{verificationFacts}}, {{notes}}, {{language}}
  */
-import { getPersona } from "../utils/personasStore";
-
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
   const callerAgentUrl = (config.callerAgentUrl as string).replace(/\/$/, "");
 
   const body = await readBody<{
-    personaId: string;
-    customerName: string;
+    personaLabel: string;
     phoneNumber: string;
     countryCode: string;
-    verificationFacts?: string;
-    notes?: string;
+    prompt: string;
+    language: string;
+    languageCode: string;
   }>(event);
 
-  if (!body?.personaId || !body?.customerName || !body?.phoneNumber) {
+  if (!body?.phoneNumber || !body?.prompt || !body?.personaLabel) {
     setResponseStatus(event, 400);
     return {
       success: false,
-      error: "personaId, customerName, and phoneNumber are required",
+      error: "personaLabel, phoneNumber, and prompt are required",
     };
   }
 
-  const persona = await getPersona(body.personaId);
-  if (!persona) {
-    setResponseStatus(event, 404);
-    return { success: false, error: `persona '${body.personaId}' not found` };
-  }
-
-  // Normalize phone number to E.164
-  const cc = (body.countryCode || persona.countryCode || "45").replace(
-    /[^\d]/g,
-    "",
-  );
+  const cc = (body.countryCode || "45").replace(/[^\d]/g, "");
   const local = body.phoneNumber.replace(/[^\d]/g, "").replace(/^0+/, "");
   const fullNumber = `+${cc}${local}`;
-
-  // Substitute placeholders into the persona's editable prompt.
-  // Demo mode: actual verification facts are sent to the model so it can
-  // compare against the customer's answer. The persona prompt itself contains
-  // strict rules + few-shot examples telling the model never to read them aloud.
-  const facts = (body.verificationFacts ?? persona.verificationFacts).trim();
-  const notes = (body.notes ?? persona.notes).trim();
-
-  const systemPrompt = persona.prompt
-    .replaceAll("{{customerName}}", body.customerName)
-    .replaceAll("{{phoneNumber}}", fullNumber)
-    .replaceAll("{{personaLabel}}", persona.label)
-    .replaceAll("{{verificationFacts}}", facts || "(ingen oplyst)")
-    .replaceAll("{{notes}}", notes || "(ingen)")
-    .replaceAll("{{language}}", persona.language);
 
   try {
     const upstream = await fetch(`${callerAgentUrl}/api/outboundCall`, {
@@ -80,11 +45,11 @@ export default defineEventHandler(async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         phoneNumber: fullNumber,
-        purpose: persona.label,
-        systemPrompt,
-        name: body.customerName,
-        language: persona.language,
-        languageCode: persona.languageCode,
+        purpose: body.personaLabel,
+        systemPrompt: body.prompt,
+        name: body.personaLabel,
+        language: body.language,
+        languageCode: body.languageCode,
         transcriptionHint: undefined,
       }),
     });
