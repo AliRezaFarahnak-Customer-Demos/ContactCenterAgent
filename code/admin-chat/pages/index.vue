@@ -358,7 +358,7 @@ const activeCount = computed(
 
     <!-- Single version badge (bottom-right) — git commit count -->
     <div
-      class="fixed bottom-1 right-2 z-30 text-[10px] font-semibold tabular-nums text-norlys-petroleum/50 select-none pointer-events-none"
+      class="fixed bottom-2 right-3 z-30 text-base font-bold tabular-nums text-norlys-petroleum select-none pointer-events-none"
       :title="`Version ${config.public.appVersion}`"
     >
       v{{ config.public.buildNumber }}
