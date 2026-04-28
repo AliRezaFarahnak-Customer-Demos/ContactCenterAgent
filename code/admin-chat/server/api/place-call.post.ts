@@ -60,28 +60,17 @@ export default defineEventHandler(async (event) => {
   const fullNumber = `+${cc}${local}`;
 
   // Substitute placeholders into the persona's editable prompt.
-  // SECURITY: never inject the actual verification values. The model leaks them
-  // regardless of prompt warnings. We send only the field names so the model
-  // knows WHAT to ask for, not what the answer is.
+  // Demo mode: actual verification facts are sent to the model so it can
+  // compare against the customer's answer. The persona prompt itself contains
+  // strict rules + few-shot examples telling the model never to read them aloud.
   const facts = (body.verificationFacts ?? persona.verificationFacts).trim();
   const notes = (body.notes ?? persona.notes).trim();
-
-  const factFieldNames = facts
-    ? facts
-        .split("\n")
-        .map((line) => line.split(":")[0].trim())
-        .filter(Boolean)
-        .join(", ")
-    : "";
-  const redactedFacts = factFieldNames
-    ? `Du KENDER IKKE kundens faktiske oplysninger \u2014 de er bevidst skjult for dig af sikkerhedsgrunde.\nFelter du kan bede kunden oplyse: ${factFieldNames}.\nN\u00e5r kunden svarer, sig blot \"tak\" og forts\u00e6t \u2014 en menneskelig medarbejder verificerer bagefter. Sig ALDRIG en adresse, e-mail eller andet du ikke har f\u00e5et direkte af kunden i denne samtale.`
-    : "(ingen verifikationskrav)";
 
   const systemPrompt = persona.prompt
     .replaceAll("{{customerName}}", body.customerName)
     .replaceAll("{{phoneNumber}}", fullNumber)
     .replaceAll("{{personaLabel}}", persona.label)
-    .replaceAll("{{verificationFacts}}", redactedFacts)
+    .replaceAll("{{verificationFacts}}", facts || "(ingen oplyst)")
     .replaceAll("{{notes}}", notes || "(ingen)")
     .replaceAll("{{language}}", persona.language);
 
