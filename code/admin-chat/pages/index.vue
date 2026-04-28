@@ -59,7 +59,6 @@ watch(isLoading, async (loading) => {
 async function startCallFromComposer(payload: {
   personaId: string;
   personaLabel: string;
-  personaInstructions: string;
   customerName: string;
   countryCode: string;
   phoneNumber: string;
@@ -146,7 +145,9 @@ const activeCount = computed(
     </header>
 
     <!-- ============== LEFT — CALL COMPOSER ============== -->
-    <div class="hidden lg:flex pt-12 w-80 shrink-0 h-full">
+    <div
+      class="hidden lg:flex pt-12 w-[32rem] xl:w-[40rem] 2xl:w-[48rem] shrink-0 h-full"
+    >
       <CallComposer @call="startCallFromComposer" />
     </div>
 
