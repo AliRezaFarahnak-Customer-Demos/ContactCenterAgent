@@ -149,7 +149,71 @@ const activeCount = computed(
       <CallComposer @call="startCallFromComposer" />
     </div>
 
-    <!-- ============== CENTER — CHAT ============== -->
+    <!-- ============== CENTER — CALL SESSIONS (sentiment UI) ============== -->
+    <aside
+      class="hidden lg:flex flex-col w-[28rem] xl:w-[32rem] shrink-0 h-full pt-12 border-r border-norlys-light-petroleum bg-white"
+    >
+      <div
+        class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center justify-between"
+      >
+        <div class="flex items-center gap-2">
+          <span
+            class="font-headline text-base font-bold text-norlys-petroleum-3"
+            >Aktive opkald</span
+          >
+          <span
+            class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-norlys-red text-norlys-sand text-[10px] font-bold"
+            >{{ sessions.length }}</span
+          >
+        </div>
+        <button
+          v-if="sessions.some((s) => s.status === 'ended')"
+          type="button"
+          class="text-[11px] text-norlys-petroleum hover:text-norlys-red transition-colors"
+          @click="clearEnded()"
+        >
+          Ryd afsluttede
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3 space-y-2">
+        <div
+          v-if="sessions.length === 0"
+          class="flex flex-col items-center justify-center h-full text-center text-norlys-petroleum/60 px-6"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-10 h-10 text-norlys-light-petroleum mb-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
+            />
+          </svg>
+          <p class="text-sm font-medium text-norlys-petroleum">
+            Ingen opkald endnu
+          </p>
+          <p class="text-xs text-norlys-petroleum/60 mt-1">
+            Vælg et scenarie og udfyld formularen til venstre.
+          </p>
+        </div>
+
+        <CallSessionCard
+          v-for="s in [...sessions].reverse()"
+          :key="s.contextId"
+          :session="s"
+          @toggle="toggleExpanded(s.contextId)"
+          @remove="removeSession(s.contextId)"
+        />
+      </div>
+    </aside>
+
+    <!-- ============== RIGHT — CHAT ============== -->
     <div class="flex-1 flex flex-col h-full min-w-0 pt-12">
       <div ref="chatContainer" class="flex-1 overflow-y-auto">
         <div
@@ -291,70 +355,6 @@ const activeCount = computed(
         </div>
       </div>
     </div>
-
-    <!-- ============== RIGHT — CALL SESSIONS ============== -->
-    <aside
-      class="hidden lg:flex flex-col w-[28rem] xl:w-[32rem] shrink-0 h-full pt-12 border-l border-norlys-light-petroleum bg-white"
-    >
-      <div
-        class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center justify-between"
-      >
-        <div class="flex items-center gap-2">
-          <span
-            class="font-headline text-base font-bold text-norlys-petroleum-3"
-            >Aktive opkald</span
-          >
-          <span
-            class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-norlys-red text-norlys-sand text-[10px] font-bold"
-            >{{ sessions.length }}</span
-          >
-        </div>
-        <button
-          v-if="sessions.some((s) => s.status === 'ended')"
-          type="button"
-          class="text-[11px] text-norlys-petroleum hover:text-norlys-red transition-colors"
-          @click="clearEnded()"
-        >
-          Ryd afsluttede
-        </button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-3 space-y-2">
-        <div
-          v-if="sessions.length === 0"
-          class="flex flex-col items-center justify-center h-full text-center text-norlys-petroleum/60 px-6"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="w-10 h-10 text-norlys-light-petroleum mb-3"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path
-              d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
-            />
-          </svg>
-          <p class="text-sm font-medium text-norlys-petroleum">
-            Ingen opkald endnu
-          </p>
-          <p class="text-xs text-norlys-petroleum/60 mt-1">
-            Vælg et scenarie og udfyld formularen til venstre.
-          </p>
-        </div>
-
-        <CallSessionCard
-          v-for="s in [...sessions].reverse()"
-          :key="s.contextId"
-          :session="s"
-          @toggle="toggleExpanded(s.contextId)"
-          @remove="removeSession(s.contextId)"
-        />
-      </div>
-    </aside>
 
     <!-- Single version badge (bottom-right) — git commit count -->
     <div
