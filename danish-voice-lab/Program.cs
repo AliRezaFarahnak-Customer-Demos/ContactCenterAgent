@@ -54,7 +54,11 @@ public static class Program
         {
             Endpoint = config["AzureVoiceLive:Endpoint"] ?? "https://cog-contactcenteragent.cognitiveservices.azure.com/",
             Model = config["AzureVoiceLive:Model"] ?? "gpt-realtime",
-            // OpenAI voices used by gpt-realtime: ash, marin, alloy, verse, coral, echo, sage, shimmer, ballad
+            // Voice families:
+            //   VoiceType="openai"          → OpenAI voices: ash, marin, alloy, verse, coral, echo, sage, shimmer, ballad
+            //   VoiceType="azure-standard"  → native Azure neural voices, e.g. da-DK-ChristelMultilingualNeural,
+            //                                 da-DK-ChristelNeural, da-DK-JeppeNeural
+            VoiceType = config["AzureVoiceLive:VoiceType"] ?? "openai",
             Voice = config["AzureVoiceLive:Voice"] ?? "ash",
             Instructions = sharedPrompt,
             MicDevice = 0,
@@ -106,7 +110,11 @@ public static class Program
         {
             Model = s.Model,
             Instructions = s.Instructions,
-            Voice = new OpenAIVoice(new OAIVoice(s.Voice)),
+            Voice = s.VoiceType switch
+            {
+                "azure-standard" => new AzureStandardVoice(s.Voice),
+                _ => new OpenAIVoice(new OAIVoice(s.Voice)),
+            },
             InputAudioFormat = InputAudioFormat.Pcm16,
             OutputAudioFormat = OutputAudioFormat.Pcm16,
             // Server-side echo cancellation removes the AI's own voice from the
@@ -122,12 +130,12 @@ public static class Program
                 Language = "da-DK",
                 PhraseList =
                 {
-                    // ── Brand & subsidiaries ──────────────────────────────
+                    // ── Brand & subsidiaries ──────────────────────
                     "Norlys", "Norlys Energi", "Norlys Tele", "Stofa",
                     "Norlys Erhverv", "Norlys Privat", "Andel", "OK", "Ørsted",
                     "EWII", "SEAS-NVE", "NRGi", "Verdo", "Nordlys",
 
-                    // ── Billing & payments ────────────────────────────────
+                    // ── Billing & payments ────────────────────────
                     "regning", "faktura", "fakturanummer", "betaling", "betalingsservice",
                     "PBS", "BetalingsService", "rykker", "rykkergebyr", "girokort",
                     "MobilePay", "MitID", "NemID", "NemKonto", "abonnement",
@@ -139,7 +147,7 @@ public static class Program
                     "forbrug", "forbrugsafregning", "merforbrug", "tilbagebetaling",
                     "kreditering", "saldo", "overforbrug", "underforbrug",
 
-                    // ── Onboarding, contracts & moving ────────────────────
+                    // ── Onboarding, contracts & moving ───────────────────
                     "onboarding", "tilmelding", "oprettelse", "kontrakt",
                     "el-aftale", "elaftale", "gasaftale", "varmeaftale",
                     "fjernvarme", "naturgas", "biogas",
@@ -151,7 +159,7 @@ public static class Program
                     "målerstand", "fjernaflæst måler", "elmåler", "varmemåler",
                     "installationsadresse", "aftagepunkt", "EAN-nummer",
 
-                    // ── Products & tariffs ────────────────────────────────
+                    // ── Products & tariffs ────────────────────────
                     "fastpris", "variabel pris", "spotpris", "timepris",
                     "grøn strøm", "vindenergi", "solcelle", "klimaaftale",
                     "Energi Plus", "Energi Basis", "Trumf",
@@ -161,13 +169,13 @@ public static class Program
                     "router", "modem", "wifi", "hastighed",
                     "hovedmåler", "bimåler", "ladestander", "elbil",
 
-                    // ── Customer & identity ───────────────────────────────
+                    // ── Customer & identity ───────────────────────
                     "kundenummer", "CPR-nummer", "CVR-nummer", "kontonummer",
                     "adresse", "postnummer", "vejnavn", "husnummer",
                     "lejlighed", "etage", "telefonnummer", "mobilnummer",
                     "e-mail", "mailadresse",
 
-                    // ── Common service phrases ────────────────────────────
+                    // ── Common service phrases ────────────────────
                     "kundeservice", "support", "teknisk support", "fejlmelding",
                     "afbrydelse", "strømsvigt", "nedbrud", "driftforstyrrelse",
                     "reklamation", "klage", "ankenævn", "Energiklagenævnet",
@@ -185,7 +193,7 @@ public static class Program
                     "halvtreds", "tres", "halvfjerds", "firs", "halvfems",
                     "hundrede", "tusinde",
 
-                    // ── Months & weekdays ─────────────────────────────────
+                    // ── Months & weekdays ────────────────────────
                     "januar", "februar", "marts", "april", "maj", "juni",
                     "juli", "august", "september", "oktober", "november", "december",
                     "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"
@@ -490,6 +498,7 @@ public sealed class LabSettings
 {
     public required string Endpoint { get; init; }
     public required string Model { get; init; }
+    public required string VoiceType { get; init; }
     public required string Voice { get; init; }
     public required string Instructions { get; init; }
     public int MicDevice { get; set; }
