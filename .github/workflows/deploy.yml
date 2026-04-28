@@ -145,12 +145,12 @@ jobs:
 
   # =====================================================================
   # Job 2: Build & push Docker images (parallel matrix — 2 runners)
-  # Needs infra so the ACR exists before we push (critical for fresh deploys)
+  # Runs in PARALLEL with infra to save wall-clock time. On a fresh deploy
+  # (no ACR yet) the "Wait for ACR" step polls until infra creates it.
   # =====================================================================
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [ infra ]
+    runs-on: ubuntu-latest-4-cores  # XL runner (4 vCPU / 16 GB) for faster docker builds
+    timeout-minutes: 20
     environment: production
 
     strategy:
@@ -181,6 +181,19 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Wait for ACR (fresh-deploy safety)
+        # Build runs in parallel with infra. On a fresh deploy the ACR doesn't
+        # exist yet — poll until infra creates it. On normal deploys this
+        # returns immediately.
+        run: |
+          for i in $(seq 1 60); do
+            if az acr show --name ${{ env.ACR_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query name -o tsv >/dev/null 2>&1; then
+              echo "ACR ${{ env.ACR_NAME }} ready"; exit 0
+            fi
+            echo "Attempt $i/60: ACR not ready yet, waiting 10s..."; sleep 10
+          done
+          echo "::error::ACR ${{ env.ACR_NAME }} did not become available within 10 minutes"; exit 1
 
       - name: Log in to ACR
         run: |
