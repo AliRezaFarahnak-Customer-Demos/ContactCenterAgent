@@ -188,23 +188,12 @@ namespace CallAutomation.AzureAI.VoiceLive
 
         private async Task UpdateSessionAsync()
         {
-            // Build effective system prompt: persona + hang-up rules (always) + language
+            // Build effective system prompt: persona prompt only (verbatim).
+            // The previous "CRITICAL LANGUAGE RULE" block was removed to achieve 1:1 wire-payload
+            // parity with danish-voice-lab, which proves the persona prompt alone is enough to keep
+            // the model in Danish. Bloating the system prompt was changing prosody/pacing and
+            // indirectly affecting barge-in timing vs the console sandbox.
             var effectivePrompt = m_systemPrompt;
-
-            // Language instruction — forces the AI to speak in the specified language
-            if (!string.IsNullOrEmpty(m_language) && !m_systemPrompt.Contains(m_language, StringComparison.OrdinalIgnoreCase))
-            {
-                effectivePrompt += $@"
-CRITICAL LANGUAGE RULE — READ CAREFULLY:
-- You MUST speak ONLY in {m_language} for the ENTIRE duration of this phone call.
-- This applies to EVERY utterance: your opening greeting, all answers, follow-up questions, and your farewell before hanging up.
-- Do NOT mix languages. Do NOT fall back to any other language even if the other person's accent or words sound similar to another language.
-- If the specified language is Danish: speak Danish (dansk). Danish is NOT English. Use Danish vocabulary, Danish grammar, and Danish pronunciation. Example greeting: 'Hej, hvad kan jeg hjælpe med?' — NOT 'Hey, how can I help?'.
-- If the specified language is English: speak English only. Do NOT speak Danish, Swedish, Norwegian, or any other Scandinavian language, even if the caller has a Scandinavian accent.
-- If the caller responds in a different language than {m_language}, continue speaking {m_language} unless they explicitly ask you to switch.
-- Your goodbye before hanging up MUST also be in {m_language}.";
-                m_logger.LogInformation("Language instruction appended to system prompt: {Language}", m_language);
-            }
 
             // Detect Danish (or any non-English-family language) so we can tune VAD/transcription accordingly.
             // azure_semantic_vad_multilingual officially supports EN/ES/FR/IT/DE/JA/PT/ZH/KO/HI — Danish falls back.
@@ -239,7 +228,8 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                 {
                     // Pin the contract explicitly so future server-side default changes can't drift on us.
                     // gpt-realtime-1.5 supports both modalities; ACS streams 16-bit PCM mono → pcm16 both ways.
-                    modalities = new[] { "audio", "text" },
+                    // Order ["text", "audio"] mirrors danish-voice-lab exactly.
+                    modalities = new[] { "text", "audio" },
                     input_audio_format = "pcm16",
                     output_audio_format = "pcm16",
                     instructions = effectivePrompt,
