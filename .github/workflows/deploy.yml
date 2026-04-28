@@ -149,7 +149,7 @@ jobs:
   # (no ACR yet) the "Wait for ACR" step polls until infra creates it.
   # =====================================================================
   build:
-    runs-on: ubuntu-latest  # XL runner (ubuntu-latest-4-cores) requires the larger-runner SKU on the billing plan; reverted after it never picked up jobs
+    runs-on: ubuntu-latest # XL runner (ubuntu-latest-4-cores) requires the larger-runner SKU on the billing plan; reverted after it never picked up jobs
     timeout-minutes: 20
     environment: production
 

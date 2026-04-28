@@ -22,13 +22,14 @@ namespace CallAutomation.AzureAI.VoiceLive
             @"
 PHONE RULES (always apply):
 - Never admit you are an AI.
-- Keep responses conversational — 1-2 sentences is ideal, but you can go longer when the topic needs it. Don't ramble, but don't cut yourself short either.
-- Your opening greeting should be warm and natural, e.g. 'Hey, how's it going?' — not too long, but not robotic either.
-- LISTEN MORE, TALK LESS: Let the other person finish speaking. Don't jump in with follow-up questions or extra commentary. Respond only to what they said — nothing more.
-- ONE THOUGHT AT A TIME: Say one short sentence, then STOP. Never chain multiple sentences, points, or follow-up questions together.
-- NO FILLER OR PADDING: Don't add 'That's a great question', 'Sure thing', 'Absolutely', 'Of course', or similar filler. Get straight to the point.
-- NO UNSOLICITED INFO: Only answer what was asked. Don't volunteer extra details, context, or suggestions unless explicitly requested.
-- NATURAL PAUSES: It's okay to have silence. Don't rush to fill every pause.
+- USE AS FEW WORDS AS POSSIBLE. Every reply must be the shortest sentence that still fully answers. Default to one short sentence, then STOP. Longer is allowed ONLY when the topic genuinely needs an explanation — never to pad, repeat, or sound friendly. Always polite.
+- OPENING (when YOU placed the call): First utterance = brief greeting + your reason in ONE short sentence. Example: 'Hej, det er Norlys — jeg ringer om din faktura.' / 'Hi, this is Norlys calling about your invoice.' Nothing more. Then WAIT.
+- SECURITY GATE: As soon as the caller signals they want to engage (says hi, asks 'what's this about', 'go on', 'okay', etc.), your VERY NEXT line must be: 'Først har jeg et par sikkerhedsspørgsmål.' / 'First, I have a couple of security questions.' Then ask one short verification question and WAIT. Do NOT discuss the actual purpose until security is cleared.
+- LISTEN MORE, TALK LESS: Let the caller finish. Never jump in with follow-up questions or commentary. Respond only to what they said — nothing more.
+- ONE THOUGHT AT A TIME: One short sentence, then STOP. Never chain sentences or questions.
+- NO FILLER: No 'great question', 'sure thing', 'absolutely', 'of course'. Straight to the point.
+- NO UNSOLICITED INFO: Only answer what was asked. Don't volunteer extra details.
+- NATURAL PAUSES: Silence is fine. Don't rush to fill it.
 - HANG-UP RULE: There are TWO valid ways to end a call:
   (A) CALLER INITIATES GOODBYE: If the caller says an EXPLICIT farewell — e.g. 'bye', 'goodbye', 'have a good day', 'talk later', 'take care', 'see you', 'I have to go', or any clear sign-off in any language — respond with a brief, warm goodbye and IMMEDIATELY call the hang_up tool. Do NOT ask 'is there anything else?' or 'shall we wrap up?' when they have already said goodbye. That is annoying and unnatural. Just say goodbye and hang up.
   (B) YOU INITIATE: If YOU want to end the call (e.g. purpose fulfilled), you MUST first ask explicitly: 'Is there anything else, or shall we wrap up?'. Then WAIT for the caller's next message. Only call hang_up if the caller responds with an explicit farewell or clearly says 'no, that's all' or equivalent. If they continue talking or say anything else, keep the conversation going.
@@ -225,28 +226,12 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                 || m_languageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase);
 
             // ---------------------------------------------------------------------
-            // PSTN / TELEPHONY TWEAKS (overridable from appsettings.json → VoiceLive:Vad)
-            // ---------------------------------------------------------------------
-            // Why these defaults differ from the spec:
-            //   * threshold 0.7 (vs spec 0.5)
-            //       8 kHz G.711 phone audio + household noise (kids shouting, TV,
-            //       car cabin) made azure_semantic_vad mis-fire on non-speech.
-            //       Each false fire triggers our barge-in path → bot stops mid-
-            //       sentence ("den stopper tit i sin tale"). 0.7 is the smallest
-            //       bump that reliably ignores background noise on a phone.
-            //   * prefix_padding_ms 400 (vs 300)
-            //       PSTN clipping eats leading consonants on quiet syllables;
-            //       400 ms preserves them so Whisper/the model see the full word.
-            //   * silence_duration_ms 900 for non-EN (vs 500 EN spec)
-            //       Danish has natural mid-utterance pauses ("øh… altså… jamen…")
-            //       that the spec default flags as end-of-turn. 900 ms lets the
-            //       caller actually finish their sentence.
-            //   * remove_filler_words = English only
-            //       Per Voice Live docs the filler-word list is EN-only; enabling
-            //       it for Danish adds latency with zero benefit.
-            //   * interrupt_response = true (default), but exposed as a knob
-            //       Set false from config to debug noise-triggered cut-offs
-            //       without redeploying.
+            // VAD CONFIG — kept identical to danish-voice-lab.
+            //   azure_semantic_vad, threshold 0.3, prefix 300ms, silence 500ms.
+            // The English-vs-other branching for silence_duration_ms is preserved
+            // as a knob, but defaults to 500ms (same as the lab) for both. The
+            // older PSTN-tuned 0.7/400/900 values caused the phone to behave
+            // differently from the console sandbox the user has tuned by ear.
             // All knobs live under "VoiceLive:Vad" in appsettings.json.
             // ---------------------------------------------------------------------
             var vadType = m_configuration.GetValue<string>("VoiceLive:Vad:Type") ?? "azure_semantic_vad";
@@ -255,11 +240,10 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
             var vadSilenceMs = m_configuration.GetValue<int>(
                 isEnglish ? "VoiceLive:Vad:SilenceDurationMsEnglish" : "VoiceLive:Vad:SilenceDurationMsOther",
                 500);
-            var vadInterruptResponse = m_configuration.GetValue<bool>("VoiceLive:Vad:InterruptResponse", true);
 
             m_logger.LogInformation(
-                "VAD config: type={Type}, threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, interrupt={Interrupt}, language={Lang}",
-                vadType, vadThreshold, vadPrefixPaddingMs, vadSilenceMs, vadInterruptResponse, m_languageCode ?? "(auto)");
+                "VAD config: type={Type}, threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, language={Lang}",
+                vadType, vadThreshold, vadPrefixPaddingMs, vadSilenceMs, m_languageCode ?? "(auto)");
 
             var jsonObject = new
             {
@@ -272,18 +256,20 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                     input_audio_format = "pcm16",
                     output_audio_format = "pcm16",
                     instructions = effectivePrompt,
+                    // EXACT MIRROR of danish-voice-lab: only these three VAD fields are sent.
+                    // Server defaults handle interrupt_response (true), remove_filler_words (off),
+                    // and auto_truncate. Adding extra fields was causing wire-payload drift vs
+                    // the console sandbox.
                     turn_detection = new
                     {
                         type = vadType,
                         threshold = vadThreshold,
                         prefix_padding_ms = vadPrefixPaddingMs,
-                        silence_duration_ms = vadSilenceMs,
-                        // Filler-word list is English-only per docs — keep ON for English, OFF otherwise.
-                        remove_filler_words = isEnglish,
-                        interrupt_response = vadInterruptResponse,
-                        auto_truncate = true
+                        silence_duration_ms = vadSilenceMs
                     },
-                    max_response_output_tokens = 300,
+                    // No max_response_output_tokens cap — danish-voice-lab doesn't set one and
+                    // we want identical behaviour. The system prompt's "1-2 sentences" rule
+                    // is the soft constraint instead.
                     input_audio_noise_reduction = new { type = "azure_deep_noise_suppression" },
                     input_audio_echo_cancellation = new { type = "server_echo_cancellation" },
                     input_audio_transcription = BuildTranscriptionConfig(m_configuration, m_languageCode, m_transcriptionHint, m_logger),
@@ -377,37 +363,17 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
         /// <summary>
         /// Build the input_audio_transcription config for the Voice Live session.
         ///
-        /// Per the official 2025-10-01 spec, with gpt-realtime the only supported transcription
-        /// models are: whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, gpt-4o-transcribe-diarize.
-        /// (azure-speech is NOT supported for gpt-realtime — only for non-realtime models.)
+        /// Production STT is **azure-speech** (Microsoft flagship Danish ASR, BCP-47 `language` +
+        /// `phrase_list` for vocabulary boost) — mirrors the danish-voice-lab sandbox.
+        ///
+        /// Other STT models (whisper-1, gpt-4o-transcribe family) are still selectable via
+        /// `Transcription:Model` for one-off A/B testing; they use a free-text `prompt` instead
+        /// of `phrase_list`. Not used in production.
         ///
         /// IMPORTANT: this transcript is a SEPARATE async pass on the audio — it is NOT what the
-        /// gpt-realtime model itself "hears". The model has its own native multilingual STT and is
-        /// usually more accurate than whichever transcription model we pick here. Per OpenAI docs:
-        /// "the transcript can diverge somewhat from the model's interpretation, and should be
-        /// treated as a rough guide." That's why the AI sometimes answers correctly even when the
-        /// transcript shown in the UI looks wrong.
-        ///
-        /// Model choice for Danish customer service (April 2026):
-        ///   - whisper-1            — older, well-tested. Tends to do better on SHORT phone-call
-        ///                            utterances and is the safer default for Danish, because the
-        ///                            newer gpt-4o-transcribe family has well-documented truncation
-        ///                            and over-eager-decoder issues on short audio (community
-        ///                            reports since Oct 2025). Supports 'language' and 'prompt'.
-        ///   - gpt-4o-transcribe    — newer, lower WER on FLEURS benchmark (incl. Danish), better
-        ///                            on long-form clean audio and on accents. Designed for call
-        ///                            centers. Supports 'language' and 'prompt'.
-        ///   - gpt-4o-mini-transcribe — cheaper, lower quality.
-        ///
-        /// Make it overridable via Transcription:Model in appsettings so we can A/B test per call
-        /// without redeploying.
-        ///
-        /// 'language' accepts BCP-47 ("da-DK") or ISO-639-1 ("da"). BCP-47 is more specific and
-        /// is what Azure recommends. We promote bare "da" → "da-DK".
-        ///
-        /// 'prompt' is a free-text vocabulary bias for the Whisper / gpt-4o-transcribe family.
-        /// Even short Danish keyword lists (caller name, address, product names) materially
-        /// improve recognition of the things callers actually say in customer service.
+        /// gpt-realtime model itself "hears". Per OpenAI docs: "the transcript can diverge from
+        /// the model's interpretation, and should be treated as a rough guide." That's why the
+        /// AI sometimes answers correctly even when the displayed transcript looks wrong.
         /// </summary>
         private static Dictionary<string, object> BuildTranscriptionConfig(
             IConfiguration configuration,
@@ -415,15 +381,13 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
             string? transcriptionHint,
             ILogger logger)
         {
-            // Default azure-speech (matches danish-voice-lab; flagship Microsoft Danish ASR with phrase-list bias).
-            // Override with Transcription:Model = "whisper-1" / "gpt-4o-transcribe" / "gpt-4o-mini-transcribe".
+            // Default azure-speech (production). Override with Transcription:Model only for one-off A/B testing.
             var model = configuration.GetValue<string>("Transcription:Model") ?? "azure-speech";
 
             var config = new Dictionary<string, object> { ["model"] = model };
 
-            // Language: explicit Transcription:Language override (e.g. "da-DK") wins; else fall back to the
-            // per-call language code. Pass it through verbatim — azure-speech wants BCP-47 (da-DK), the
-            // OpenAI Whisper family accepts both ISO-639-1 and BCP-47.
+            // Language: explicit Transcription:Language override wins; else fall back to per-call language code.
+            // azure-speech wants BCP-47 (e.g. da-DK).
             var lang = configuration.GetValue<string>("Transcription:Language");
             if (string.IsNullOrEmpty(lang))
             {
@@ -435,7 +399,7 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                 config["language"] = lang;
             }
 
-            // azure-speech uses `phrase_list` (vocabulary boosting). Whisper / gpt-4o-transcribe use `prompt`.
+            // azure-speech → phrase_list (vocabulary boost). Other models (whisper / gpt-4o-transcribe) → prompt.
             var isAzureSpeech = string.Equals(model, "azure-speech", StringComparison.OrdinalIgnoreCase);
 
             if (isAzureSpeech)
@@ -448,7 +412,7 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
             }
             else
             {
-                // Vocabulary prompt for Whisper-family models. Caller-supplied hint wins.
+                // Only hit when overriding to a non-azure-speech model. Caller-supplied hint wins.
                 var prompt = transcriptionHint;
                 if (string.IsNullOrEmpty(prompt))
                 {
