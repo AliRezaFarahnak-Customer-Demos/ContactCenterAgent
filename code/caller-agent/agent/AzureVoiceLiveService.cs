@@ -270,17 +270,13 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                         {
                             type = "function",
                             name = "hang_up",
-                            description = "End the phone call. STRICT RULES — read carefully before calling: " +
-                                          "(1) CALLER SAID AN EXPLICIT GOODBYE: The caller must have used a CLEAR farewell word/phrase like 'bye', 'goodbye', 'have a good day', 'talk later', 'take care', 'see you', 'I have to go', or equivalent in any language. " +
-                                          "If yes: say a brief warm goodbye and call this tool. Do NOT ask 'anything else?' — they already said goodbye. " +
-                                          "(2) YOU WANT TO END (caller has NOT said goodbye): You MUST first ask 'Is there anything else, or shall we wrap up?'. Then STOP and WAIT for the caller's next spoken message. " +
-                                          "Only call hang_up AFTER the caller responds with an explicit farewell or clearly says 'no, that's all' or equivalent. " +
-                                          "If the caller says ANYTHING other than a clear farewell after your wrap-up question, do NOT call this tool — keep talking. " +
-                                          "CRITICAL: These words are NOT farewells and MUST NOT trigger hang_up: 'okay', 'fine', 'thanks', 'alright', 'sure', 'sounds good', 'no problem', 'you can call me anytime', or any agreement/acknowledgment. The caller may still have more to say. " +
-                                          "NEVER call this tool right after your own statement or wrap-up remark. You MUST wait for the CALLER to speak an explicit farewell first. " +
-                                          "NEVER call this tool until the other person has spoken at least once. " +
-                                          "Exception: you may call this if the call truly cannot proceed (wrong number, voicemail detected). " +
-                                          "Always say your goodbye IN THE SAME LANGUAGE you've been speaking BEFORE calling this tool.",
+                            description = "End the phone call. Call this tool whenever the caller signals they want to end the conversation — in ANY language and ANY phrasing. " +
+                                          "This includes explicit farewells ('bye', 'goodbye', 'hej hej', 'farvel', 'have a good day', 'take care', 'see you'), " +
+                                          "polite wrap-ups ('thanks, that's all', 'tak, det var det', 'no, nothing more', 'nej det var det', 'okay vi snakkes'), " +
+                                          "requests to leave ('I have to go', 'jeg skal videre', 'jeg er nødt til at løbe'), or any clear sign that the caller wants to hang up. " +
+                                          "Trust the caller. If they’ve indicated they’re done, say a brief warm goodbye in the same language and call this tool — do NOT keep pushing topics, do NOT ask 'are you sure?', do NOT try one more time to be helpful. " +
+                                          "You may also call this tool if the call truly cannot proceed (wrong number, voicemail detected). " +
+                                          "Only avoid calling it when the caller is clearly still engaged in the conversation (asking questions, sharing information, mid-sentence).",
                             parameters = new
                             {
                                 type = "object",
