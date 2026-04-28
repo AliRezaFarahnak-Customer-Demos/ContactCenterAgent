@@ -361,8 +361,10 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                     break;
 
                 default: // azure-standard
+                    // Console app uses bare AzureStandardVoice(name) — no temperature.
+                    // Sending an unsupported field can cause the server to silently
+                    // fall back to the default voice. Keep parity with console.
                     voice["type"] = "azure-standard";
-                    voice["temperature"] = voiceTemp;
                     break;
             }
 
@@ -418,35 +420,28 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
 
             var config = new Dictionary<string, object> { ["model"] = model };
 
-            // Promote ISO-639-1 "da" to BCP-47 "da-DK" for Danish.
-            // Promote bare "en" to "en-US" similarly.
+            // Mirror console app: pass the bare ISO-639-1 code ("da", "en") — no BCP-47 promotion.
+            // Whisper-1 accepts both, but the console version uses the short form and that's the
+            // configuration the user has validated as "working well".
             var lang = languageCode;
-            if (string.Equals(lang, "da", StringComparison.OrdinalIgnoreCase)) lang = "da-DK";
-            else if (string.Equals(lang, "en", StringComparison.OrdinalIgnoreCase)) lang = "en-US";
+            if (!string.IsNullOrEmpty(lang) && lang.Length > 2)
+            {
+                lang = lang.Substring(0, 2).ToLowerInvariant();
+            }
 
             if (!string.IsNullOrEmpty(lang))
             {
                 config["language"] = lang;
             }
 
-            // Build the vocabulary prompt. Caller-supplied hint wins; otherwise fall back to a
-            // sensible default per language so we never send empty bias.
+            // Vocabulary prompt: only send if the caller / config explicitly provides one.
+            // Console app sends NO prompt and produces clean transcripts; the long Danish keyword
+            // list was biasing recognition. Opt-in only via per-call hint or Transcription:DefaultPrompt.
             var prompt = transcriptionHint;
             if (string.IsNullOrEmpty(prompt))
             {
                 prompt = configuration.GetValue<string>($"Transcription:DefaultPrompt:{lang}")
                       ?? configuration.GetValue<string>("Transcription:DefaultPrompt:Default");
-
-                // Hard-coded fallback for Danish customer service if nothing in config.
-                if (string.IsNullOrEmpty(prompt) && (lang?.StartsWith("da", StringComparison.OrdinalIgnoreCase) ?? false))
-                {
-                    prompt = "Dansk kundeservicesamtale for Norlys (energi, fiber, internet, mobil). "
-                           + "Almindelige ord: Norlys, fiber, fiberboks, router, modem, WAN-port, Wi-Fi, "
-                           + "el, gas, kWh, abonnement, faktura, regning, betaling, MitID, NemKonto, "
-                           + "selvbetjening, tekniker, hastighedstest, opsigelse, flytning. "
-                           + "Danske byer: København, Aarhus, Odense, Aalborg, Esbjerg, Randers. "
-                           + "Talte tal og adresser udskrives som de siges.";
-                }
             }
 
             if (!string.IsNullOrEmpty(prompt))
