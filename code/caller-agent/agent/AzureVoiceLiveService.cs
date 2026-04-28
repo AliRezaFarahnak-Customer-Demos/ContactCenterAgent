@@ -261,8 +261,9 @@ namespace CallAutomation.AzureAI.VoiceLive
                                           "This includes explicit farewells ('bye', 'goodbye', 'hej hej', 'farvel', 'have a good day', 'take care', 'see you'), " +
                                           "polite wrap-ups ('thanks, that's all', 'tak, det var det', 'no, nothing more', 'nej det var det', 'okay vi snakkes'), " +
                                           "requests to leave ('I have to go', 'jeg skal videre', 'jeg er nødt til at løbe'), or any clear sign that the caller wants to hang up. " +
-                                          "Trust the caller. If they’ve indicated they’re done, say a brief warm goodbye in the same language and call this tool — do NOT keep pushing topics, do NOT ask 'are you sure?', do NOT try one more time to be helpful. " +
-                                          "You may also call this tool if the call truly cannot proceed (wrong number, voicemail detected). " +
+                                          "Trust the caller. If they’ve indicated they’re done, do NOT keep pushing topics, do NOT ask 'are you sure?', do NOT try one more time to be helpful. " +
+                                          "MANDATORY: BEFORE calling this tool, you MUST first speak a brief Norlys farewell in the caller's language — thank them for being a Norlys customer and wish them a good day (e.g. 'Tak fordi du er kunde hos Norlys — hav en god dag, farvel.'). Only after you have spoken that line, call hang_up. " +
+                                          "You may also call this tool if the call truly cannot proceed (wrong number, voicemail detected) — same farewell rule applies. " +
                                           "Only avoid calling it when the caller is clearly still engaged in the conversation (asking questions, sharing information, mid-sentence).",
                             parameters = new
                             {
@@ -568,8 +569,8 @@ namespace CallAutomation.AzureAI.VoiceLive
                                 m_pendingHangUp = true;
                                 m_pendingHangUpReason = args ?? "AI initiated hang up";
 
-                                // Send tool output that forces the model to speak a farewell
-                                var farewellLang = !string.IsNullOrEmpty(m_language) ? $" in {m_language}" : "";
+                                // Send tool output that forces the model to speak a Norlys farewell
+                                var farewellLang = !string.IsNullOrEmpty(m_language) ? $" in {m_language}" : " in Danish";
                                 var toolOutput = new
                                 {
                                     type = "conversation.item.create",
@@ -577,7 +578,7 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     {
                                         type = "function_call_output",
                                         call_id = callId,
-                                        output = $"Say a brief, friendly goodbye{farewellLang} now. Keep it to one short sentence."
+                                        output = $"Say a brief, warm farewell{farewellLang} that thanks the caller for being a Norlys customer and wishes them a good day. ONE short sentence, e.g. 'Tak fordi du er kunde hos Norlys — hav en god dag, farvel.' Do NOT add anything else, do NOT ask further questions."
                                     }
                                 };
                                 await SendMessageAsync(JsonSerializer.Serialize(toolOutput), CancellationToken.None);
@@ -600,9 +601,13 @@ namespace CallAutomation.AzureAI.VoiceLive
 
                             if (m_pendingHangUp)
                             {
-                                // Farewell audio has been fully generated and streamed — now disconnect
-                                m_logger.LogInformation("Farewell response complete — disconnecting in ~4s");
-                                await Task.Delay(4000); // buffer for audio to flush to caller
+                                // Farewell audio has been fully generated and streamed — now disconnect.
+                                // Hard delay = farewell speech duration buffer + ACS RTP flush.
+                                // 6s is enough for ~15-20 Danish syllables ("Tak fordi du er kunde hos Norlys, hav en god dag, farvel")
+                                // played at standard TTS rate, plus a 1s tail so the line doesn't die mid-word.
+                                const int FarewellHangUpDelayMs = 6000;
+                                m_logger.LogInformation("Farewell response complete — disconnecting in {Delay}ms", FarewellHangUpDelayMs);
+                                await Task.Delay(FarewellHangUpDelayMs);
 
                                 if (m_onHangUp != null)
                                 {
