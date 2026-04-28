@@ -1,6 +1,6 @@
 # Contact Center Agent — Copilot Instructions
 
-Multi-agent platform: Azure AI Foundry + Azure Container Apps. Admin chat UI (Nuxt 3 + .NET 10) + Caller Agent (ACS + Voice Live API, .NET 8). `azd up` allowed locally.
+Multi-agent platform: Azure AI Foundry + Azure Container Apps. Admin chat UI (Nuxt 3 + .NET 10) + Caller Agent (ACS + Voice Live API, .NET 10). `azd up` allowed locally.
 
 > **Detailed architecture, telemetry, data flows, and gotchas** → see `.github/agents/app-architecture-dependencies.agent.md`
 
@@ -19,9 +19,12 @@ code/
     assets/css/        # Tailwind + brand styles
     public/            # Favicon (official Norlys CVI), logos, OG image
     plugins/           # App Insights browser SDK
-  caller-agent/        # .NET 8 — ACS + Voice Live API (outbound/inbound AI phone calls)
+  caller-agent/        # .NET 10 — ACS + Voice Live API (outbound/inbound AI phone calls)
     agent/             # CallerAgent, AcsMediaStreamingHandler, VoiceLive, ConversationAnalysis
-  console-demo-voicelive/  # Local-only Voice Live CLI demo (.NET 10)
+  console-demo-voicelive/  # Local-only Voice Live CLI demo (.NET 10).
+                       # Sandbox I use to test what works best (voice, prompts, VAD, tools, etc.).
+                       # When I'm happy with a change here, ask before porting it — then replicate
+                       # it into the real apps (caller-agent API, admin-chat, etc.).
   speech-tool/         # Local-only TTS CLI (.NET 8)
 danish-voice-lab/      # Local-only sandbox: speak Danish ↔ Voice Live (.NET 10).
                        # Tweak voice/instructions/VAD here before porting to caller-agent.

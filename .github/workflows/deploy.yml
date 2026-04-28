@@ -172,6 +172,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so .version.json gets a real commit count
 
       - name: Log in to Azure (OIDC)
         uses: azure/login@v2
@@ -197,6 +199,25 @@ jobs:
             -a appi-contactcenteragent \
             --query connectionString -o tsv)
           echo "connection_string=${CS}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp admin-chat version file
+        if: matrix.service == 'admin-chat'
+        run: |
+          # Dockerfile COPYs .version.json into the build; locally azd's
+          # prepackage hook writes it. In CI we must create it ourselves
+          # or `docker build` fails on the COPY step.
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="1.0.${COMMIT_COUNT}-${SHORT_SHA}"
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat > code/admin-chat/.version.json <<EOF
+          {
+            "version": "${VERSION}",
+            "commit": "${SHORT_SHA}",
+            "buildTime": "${BUILD_TIME}"
+          }
+          EOF
+          echo "Stamped admin-chat version: ${VERSION}"
 
       - name: Build & push ${{ matrix.service }}
         uses: docker/build-push-action@v6
