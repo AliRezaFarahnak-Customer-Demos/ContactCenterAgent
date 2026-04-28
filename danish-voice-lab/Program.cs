@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 using Azure.AI.VoiceLive;
 using Azure.Identity;
@@ -42,13 +43,20 @@ public static class Program
             .Build();
 
         // ── LAB SETTINGS — tweak these freely ────────────────────────────────
+        // Prompts live in the SHARED `personas.json` at the repo root (also
+        // consumed by code/admin-chat). Pick which persona to test by id, or
+        // override entirely with AzureVoiceLive:Instructions in appsettings.
+        var personaId = config["AzureVoiceLive:PersonaId"] ?? "onboarding";
+        var instructionsOverride = config["AzureVoiceLive:Instructions"];
+        var sharedPrompt = instructionsOverride ?? LoadPersonaPrompt(personaId);
+
         var settings = new LabSettings
         {
             Endpoint = config["AzureVoiceLive:Endpoint"] ?? "https://cog-contactcenteragent.cognitiveservices.azure.com/",
             Model = config["AzureVoiceLive:Model"] ?? "gpt-realtime",
             // OpenAI voices used by gpt-realtime: ash, marin, alloy, verse, coral, echo, sage, shimmer, ballad
             Voice = config["AzureVoiceLive:Voice"] ?? "ash",
-            Instructions = config["AzureVoiceLive:Instructions"] ?? "Du er en venlig dansk assistent. Du taler kun dansk. Svar kort og naturligt som i en telefonsamtale.",
+            Instructions = sharedPrompt,
             MicDevice = 0,
         };
         // ─────────────────────────────────────────────────────────────────────
@@ -322,6 +330,38 @@ public static class Program
             Console.WriteLine($"    [{i}] {caps.ProductName}");
         }
         Console.WriteLine("  (set AzureVoiceLive:MicDevice in appsettings.json to choose)");
+    }
+
+    /// <summary>
+    /// Loads the prompt for the named persona from the SHARED personas.json
+    /// (copied to output by the csproj). Throws if the persona id is unknown
+    /// so a typo doesn't silently fall back to a stale default.
+    /// </summary>
+    private static string LoadPersonaPrompt(string personaId)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "personas.json");
+        if (!File.Exists(path))
+            throw new FileNotFoundException(
+                $"Shared personas.json not found at '{path}'. Check DanishVoiceLab.csproj <Content Include>.");
+
+        using var stream = File.OpenRead(path);
+        using var doc = JsonDocument.Parse(stream);
+        foreach (var p in doc.RootElement.EnumerateArray())
+        {
+            if (p.TryGetProperty("id", out var idEl) &&
+                string.Equals(idEl.GetString(), personaId, StringComparison.OrdinalIgnoreCase))
+            {
+                return p.GetProperty("prompt").GetString()
+                    ?? throw new InvalidOperationException($"Persona '{personaId}' has no prompt.");
+            }
+        }
+
+        var ids = string.Join(", ",
+            doc.RootElement.EnumerateArray()
+                .Select(e => e.TryGetProperty("id", out var i) ? i.GetString() : null)
+                .Where(s => s is not null));
+        throw new InvalidOperationException(
+            $"Persona '{personaId}' not found in personas.json. Available: {ids}");
     }
 
     private static bool AudioSelfTest()
