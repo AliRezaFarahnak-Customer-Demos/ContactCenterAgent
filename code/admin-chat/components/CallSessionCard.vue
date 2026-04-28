@@ -39,16 +39,18 @@ function timeFmt(t: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Two simple 0–5 metrics. We only show a real score once the conversation has
-// enough substance — otherwise we render "Neutral" so the UI doesn't make
-// premature judgments based on a greeting alone.
+// Two simple 0–6 metrics (3 = neutral midpoint). We render "Neutral" when
+// the conversation hasn't produced enough signal — a greeting alone shouldn't
+// move the meter in either direction.
 //
 //   • Problem solved → ResolutionProgress
 //   • Customer satisfied → CompanySatisfaction (falls back to CustomerMood)
 //
-// "Enough context" = at least 2 customer turns in the transcript. Greetings
-// and yes/no replies don't count as a real signal.
+// "Enough context" = at least 2 substantive customer turns AND analysis ready.
 // ---------------------------------------------------------------------------
+const SCALE_MAX = 6;
+const NEUTRAL = 3;
+
 const hasEnoughContext = computed(() => {
   const userTurns = props.session.transcript.filter(
     (t) => t.speaker === "user" && t.text.trim().length > 3,
@@ -69,35 +71,40 @@ const metrics = computed<Metric[]>(() => {
     ];
   }
   const a = props.session.analysis!;
-  const satisfaction = a.CompanySatisfaction ?? a.CustomerMood ?? 3;
+  const satisfaction = a.CompanySatisfaction ?? a.CustomerMood ?? NEUTRAL;
   return [
-    { label: "Problem løst", value: a.ResolutionProgress ?? 0 },
+    { label: "Problem løst", value: a.ResolutionProgress ?? NEUTRAL },
     { label: "Tilfreds kunde", value: satisfaction },
   ];
 });
 
+// Render the 6 segments. Each segment's color reflects the bucket the score
+// falls into. Filled = up to and including the score; empty = beyond it.
 function dotClass(value: number | null, index: number) {
-  // Neutral: all dots filled in petroleum/30 (mid-grey teal)
-  if (value === null) {
-    return index < 3 ? "bg-norlys-petroleum/30" : "bg-norlys-light-petroleum";
-  }
+  // Neutral / no context: all segments muted, no fill direction.
+  if (value === null) return "bg-norlys-light-petroleum";
+
   if (index >= value) return "bg-norlys-light-petroleum";
-  // Color by score band
-  if (value <= 1) return "bg-norlys-red";
-  if (value <= 2) return "bg-amber-500";
-  if (value <= 3) return "bg-norlys-petroleum/60";
-  return "bg-norlys-petroleum";
+
+  // Color the FILLED segments by the score band.
+  if (value <= 1) return "bg-norlys-red"; // very negative
+  if (value <= 2) return "bg-amber-500"; // negative
+  if (value <= 3) return "bg-norlys-petroleum/40"; // neutral
+  if (value <= 4) return "bg-norlys-petroleum/70"; // mildly positive
+  return "bg-norlys-petroleum"; // strongly positive
 }
 
 function valueLabel(value: number | null) {
   if (value === null) return "Neutral";
-  return `${value} / 5`;
+  if (value === NEUTRAL) return `${value} / ${SCALE_MAX} • Neutral`;
+  return `${value} / ${SCALE_MAX}`;
 }
 
 function valueLabelClass(value: number | null) {
   if (value === null) return "text-norlys-petroleum/60";
   if (value <= 1) return "text-norlys-red font-semibold";
   if (value <= 2) return "text-amber-700 font-semibold";
+  if (value <= 3) return "text-norlys-petroleum/70 font-semibold";
   return "text-norlys-petroleum-3 font-semibold";
 }
 </script>
@@ -151,20 +158,18 @@ function valueLabelClass(value: number | null) {
             >{{ session.phoneNumber }}</span
           >
         </div>
-        <div class="flex items-center gap-2 mt-0.5">
-          <span class="text-[11px] text-norlys-ink/70 truncate">{{
-            session.personaLabel
-          }}</span>
-          <span class="text-[11px] text-norlys-light-petroleum-3">•</span>
-          <span class="text-[11px] text-norlys-petroleum/60">{{
-            timeFmt(session.startedAt)
-          }}</span>
+        <div
+          class="flex items-center gap-2 mt-0.5 text-xs text-norlys-petroleum/70"
+        >
+          <span class="truncate">{{ session.personaLabel }}</span>
+          <span class="text-norlys-light-petroleum-3">•</span>
+          <span class="tabular-nums">{{ timeFmt(session.startedAt) }}</span>
         </div>
       </div>
 
       <!-- Status badge -->
       <span
-        class="shrink-0 inline-flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full"
+        class="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full"
         :class="statusBadge(session.status).classes"
       >
         <span
@@ -193,25 +198,26 @@ function valueLabelClass(value: number | null) {
 
     <!-- Expanded body — simple two-metric live snapshot -->
     <div v-if="session.expanded" class="border-t border-norlys-light-petroleum">
-      <div class="px-4 py-4 space-y-4">
+      <div class="px-4 py-4 space-y-3">
         <div
           v-for="m in metrics"
           :key="m.label"
           class="flex items-center gap-3"
         >
-          <span class="text-xs text-norlys-ink w-32 shrink-0">{{
-            m.label
-          }}</span>
+          <span
+            class="font-headline text-sm font-bold text-norlys-petroleum-3 w-32 shrink-0"
+            >{{ m.label }}</span
+          >
           <div class="flex-1 flex items-center gap-1.5">
             <span
-              v-for="i in 5"
+              v-for="i in SCALE_MAX"
               :key="i"
-              class="h-2.5 flex-1 rounded-full transition-colors duration-500"
+              class="h-2 flex-1 rounded-full transition-colors duration-500"
               :class="dotClass(m.value, i - 1)"
             />
           </div>
           <span
-            class="text-[11px] tabular-nums w-14 text-right"
+            class="text-sm tabular-nums w-24 text-right"
             :class="valueLabelClass(m.value)"
             >{{ valueLabel(m.value) }}</span
           >
@@ -219,7 +225,7 @@ function valueLabelClass(value: number | null) {
 
         <p
           v-if="!hasEnoughContext && session.status !== 'ended'"
-          class="text-[11px] text-norlys-petroleum/60 italic text-center pt-1"
+          class="text-xs text-norlys-petroleum/60 italic text-left pt-1"
         >
           Venter på samtale…
         </p>
@@ -232,7 +238,7 @@ function valueLabelClass(value: number | null) {
         <button
           v-if="session.status === 'ended'"
           type="button"
-          class="text-[11px] text-norlys-petroleum hover:text-norlys-red px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 rounded"
+          class="text-xs text-norlys-petroleum hover:text-norlys-red px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 rounded"
           @click="emit('remove')"
         >
           Fjern fra liste

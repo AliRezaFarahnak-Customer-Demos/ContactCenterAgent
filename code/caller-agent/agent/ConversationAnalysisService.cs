@@ -9,7 +9,7 @@ namespace CallAutomation.AzureAI.VoiceLive;
 
 /// <summary>
 /// Real-time conversation analysis using GPT-5.4-nano structured outputs.
-/// Listens to transcript events and produces 15-category sentiment scores (0-5)
+/// Listens to transcript events and produces 15-category sentiment scores (0-6, where 3 = neutral)
 /// after every new speaker turn.
 /// </summary>
 public class ConversationAnalysisService : IDisposable
@@ -22,26 +22,26 @@ public class ConversationAnalysisService : IDisposable
     private readonly SemaphoreSlim _analysisLock = new(1, 1);
     private bool _disposed;
 
-    // JSON schema for structured output — 15 categories, each 0-5
+    // JSON schema for structured output — 15 categories, each 0-6 (3 = neutral / not enough signal)
     private static readonly BinaryData s_analysisSchema = BinaryData.FromBytes("""
         {
             "type": "object",
             "properties": {
-                "purchase_intent": { "type": "integer", "description": "Likelihood the caller will buy a product (0=none, 5=very likely)" },
-                "customer_mood": { "type": "integer", "description": "Overall emotional state (0=very angry, 5=delighted)" },
-                "cooperativeness": { "type": "integer", "description": "Willingness to engage and work with the agent (0=hostile, 5=very cooperative)" },
-                "brand_perception": { "type": "integer", "description": "How the caller feels about the brand or product (0=very negative, 5=very positive)" },
-                "company_satisfaction": { "type": "integer", "description": "Satisfaction with the company overall (0=very unhappy, 5=very happy)" },
-                "urgency": { "type": "integer", "description": "How urgent the caller's need is (0=no urgency, 5=extremely urgent)" },
-                "engagement": { "type": "integer", "description": "How actively the caller is participating (0=disengaged, 5=highly engaged)" },
-                "frustration": { "type": "integer", "description": "Signs of frustration or irritation (0=none, 5=extremely frustrated)" },
-                "trust_in_agent": { "type": "integer", "description": "Confidence the caller has in the agent (0=no trust, 5=full trust)" },
-                "churn_risk": { "type": "integer", "description": "Likelihood the caller will leave or cancel (0=no risk, 5=very high risk)" },
-                "upsell_opportunity": { "type": "integer", "description": "Potential for additional sales or upgrades (0=none, 5=strong opportunity)" },
-                "resolution_progress": { "type": "integer", "description": "How close the conversation is to resolving the issue (0=not started, 5=fully resolved)" },
-                "politeness": { "type": "integer", "description": "Caller's tone and manners (0=very rude, 5=very polite)" },
-                "call_effectiveness": { "type": "integer", "description": "How productive the conversation is (0=unproductive, 5=very productive)" },
-                "overall_sentiment": { "type": "integer", "description": "Net positive or negative feeling (0=very negative, 5=very positive)" }
+                "purchase_intent": { "type": "integer", "description": "Likelihood the caller will buy a product (0=none, 3=neutral/unknown, 6=very likely)" },
+                "customer_mood": { "type": "integer", "description": "Overall emotional state (0=very angry, 3=neutral, 6=delighted)" },
+                "cooperativeness": { "type": "integer", "description": "Willingness to engage and work with the agent (0=hostile, 3=neutral, 6=very cooperative)" },
+                "brand_perception": { "type": "integer", "description": "How the caller feels about the brand or product (0=very negative, 3=neutral, 6=very positive)" },
+                "company_satisfaction": { "type": "integer", "description": "Satisfaction with the company overall (0=very unhappy, 3=neutral, 6=very happy)" },
+                "urgency": { "type": "integer", "description": "How urgent the caller's need is (0=no urgency, 3=normal, 6=extremely urgent)" },
+                "engagement": { "type": "integer", "description": "How actively the caller is participating (0=disengaged, 3=neutral, 6=highly engaged)" },
+                "frustration": { "type": "integer", "description": "Signs of frustration or irritation (0=none, 3=neutral, 6=extremely frustrated)" },
+                "trust_in_agent": { "type": "integer", "description": "Confidence the caller has in the agent (0=no trust, 3=neutral, 6=full trust)" },
+                "churn_risk": { "type": "integer", "description": "Likelihood the caller will leave or cancel (0=no risk, 3=unclear, 6=very high risk)" },
+                "upsell_opportunity": { "type": "integer", "description": "Potential for additional sales or upgrades (0=none, 3=unclear, 6=strong opportunity)" },
+                "resolution_progress": { "type": "integer", "description": "How close the conversation is to resolving the issue (0=not started, 3=in progress, 6=fully resolved)" },
+                "politeness": { "type": "integer", "description": "Caller's tone and manners (0=very rude, 3=neutral, 6=very polite)" },
+                "call_effectiveness": { "type": "integer", "description": "How productive the conversation is (0=unproductive, 3=neutral, 6=very productive)" },
+                "overall_sentiment": { "type": "integer", "description": "Net positive or negative feeling (0=very negative, 3=neutral, 6=very positive)" }
             },
             "required": [
                 "purchase_intent", "customer_mood", "cooperativeness", "brand_perception",
@@ -55,16 +55,18 @@ public class ConversationAnalysisService : IDisposable
 
     private const string AnalysisSystemPrompt =
         """
-        You are a real-time call center analytics engine. You analyze phone call transcripts and score the conversation across 15 categories on a 0-5 scale.
+        You are a real-time call center analytics engine. You analyze phone call transcripts and score the conversation across 15 categories on a 0-6 scale, where 3 means NEUTRAL.
 
         Rules:
         - Score each category based ONLY on what has been said so far in the conversation.
-        - If the conversation has not touched on a topic (e.g., no product mentioned), score that category as 0.
-        - Be precise and conservative — don't inflate scores without evidence.
-        - Update scores as the conversation evolves; early greetings should show neutral scores.
-        - Frustration and churn_risk are INVERSE to positive sentiment — high frustration = low mood.
+        - 3 is the neutral midpoint. Use 3 whenever the caller has not yet given a clear positive OR negative signal for that category (e.g. early greetings, identity verification only, no problem stated yet).
+        - Use 0–2 only when there is clear NEGATIVE evidence (anger, refusal, dissatisfaction, frustration).
+        - Use 4–6 only when there is clear POSITIVE evidence (satisfaction, agreement, gratitude, resolution).
+        - Be precise and conservative — don't inflate scores without evidence. When in doubt, return 3 (neutral).
+        - Update scores as the conversation evolves; early greetings should mostly show 3s.
+        - Frustration and churn_risk are INVERSE to positive sentiment — high frustration (>3) implies low mood (<3).
         - Consider tone, word choice, and context when scoring.
-        - All scores must be integers from 0 to 5 inclusive.
+        - All scores must be integers from 0 to 6 inclusive.
         """;
 
     public ConversationAnalysisService(
