@@ -110,6 +110,34 @@ const vAutosize = {
     nextTick(() => resizeTextarea(el));
   },
 };
+
+/**
+ * Extract the "### Verifikationsfakta" block from the prompt and parse it into
+ * a list of { label, value } pairs so the UI can show them as a cheat sheet
+ * — handy when demoing, since these are the values the customer must speak
+ * to pass the AI's identity check.
+ */
+const verificationFacts = computed<Array<{ label: string; value: string }>>(
+  () => {
+    const text = promptText.value;
+    if (!text) return [];
+    const match = text.match(
+      /###\s*Verifikationsfakta[^\n]*\n([\s\S]*?)(?=\n#|\n\n#|$)/i,
+    );
+    if (!match) return [];
+    return match[1]
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && line.includes(":"))
+      .map((line) => {
+        const idx = line.indexOf(":");
+        return {
+          label: line.slice(0, idx).trim(),
+          value: line.slice(idx + 1).trim(),
+        };
+      });
+  },
+);
 </script>
 
 <template>
@@ -235,6 +263,47 @@ const vAutosize = {
             "
           />
         </div>
+      </div>
+
+      <!-- Verifikationsfakta cheat sheet (parsed from prompt) -->
+      <div
+        v-if="verificationFacts.length > 0"
+        class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3"
+      >
+        <div class="flex items-center gap-1.5 mb-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-4 h-4 text-amber-700"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span
+            class="text-xs font-semibold uppercase tracking-wide text-amber-800"
+            >Demo: hemmelige værdier kunden skal sige</span
+          >
+        </div>
+        <ul class="space-y-1">
+          <li
+            v-for="f in verificationFacts"
+            :key="f.label"
+            class="flex items-baseline gap-2 text-sm"
+          >
+            <span class="text-amber-800 font-medium min-w-16">{{
+              f.label
+            }}:</span>
+            <span class="font-mono text-amber-900 select-all">{{
+              f.value
+            }}</span>
+          </li>
+        </ul>
       </div>
 
       <!-- System prompt (single source of truth) -->

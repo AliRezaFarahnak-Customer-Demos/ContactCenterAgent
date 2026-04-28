@@ -1,15 +1,15 @@
 /**
- * Personas — loaded from the SHARED `personas.json` at the repo root.
+ * Personas — bundled JSON.
  *
- * One file, two consumers: this Nuxt server util AND the danish-voice-lab
- * console app both read the same prompts. Edit `personas.json` at the repo
- * root → both apps pick it up next time they start.
+ * Loaded via ES import so Nitro inlines it into the server bundle. Works in
+ * dev (npm run dev) and in production Docker without any runtime file lookup.
  *
- * Path resolution: in dev, Nuxt runs from `code/admin-chat/`, so we walk up
- * two levels. The file is loaded once at module import.
+ * The canonical file at the repo root (../../../../personas.json) is the
+ * source of truth for the danish-voice-lab console app. We ship a copy at
+ * `server/personas.json` for the web app — keep them in sync (or replace
+ * with a build step that copies one to the other).
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import data from "../personas.json";
 
 export interface CallPersona {
   id: string;
@@ -23,17 +23,6 @@ export interface CallPersona {
   languageCode: string;
 }
 
-const SHARED_PATH = resolve(process.cwd(), "..", "..", "personas.json");
-
-let cached: CallPersona[] | null = null;
-
-function load(): CallPersona[] {
-  if (cached) return cached;
-  const raw = readFileSync(SHARED_PATH, "utf8");
-  cached = JSON.parse(raw) as CallPersona[];
-  return cached;
-}
-
 export async function loadPersonas(): Promise<CallPersona[]> {
-  return load();
+  return data as CallPersona[];
 }
