@@ -172,3 +172,63 @@ field does NOT accept `azure-speech` when the model is `gpt-realtime`, so the
 parallel-stream approach is the only way.
 
 Estimated effort: a few hundred LOC + extra Speech resource cost.
+
+---
+
+## Lessons learned (April 2026)
+
+### Voice / STT parity between console and phone
+
+- **The wire payload is what matters, not the SDK.** `caller-agent` sends config
+  to Voice Live as raw JSON; `danish-voice-lab` builds the same payload via the
+  `Azure.AI.VoiceLive` SDK typed objects. The Voice Live server cannot tell them
+  apart. Don't rewrite to the SDK just to "match" — it changes nothing the server
+  sees. The csproj references the SDK so we can use typed objects later if we
+  want, but the raw-JSON path is fine.
+- **Server SILENTLY falls back to a default voice if you send unsupported
+  fields.** Earlier we sent `temperature` on `azure-standard` voices; verify
+  via App Insights `Session accepted by server` traces that the `voice` block
+  in `session.updated` matches what you sent.
+- **`azure-speech` IS supported with `gpt-realtime`** (the older code comment
+  was wrong). It accepts `language` (BCP-47, e.g. `da-DK`) and `phrase_list`
+  for vocabulary boosting. `whisper-1` / `gpt-4o-transcribe` use `prompt`
+  instead of `phrase_list`.
+- **PSTN narrowband is the real STT bottleneck**, not config. ACS hands us a
+  24 kHz container, but the audio inside only carries 0.3–3.4 kHz of actual
+  speech (physical phone-network limit). No prompt/phrase-list/SDK change can
+  recover frequencies the network already discarded. Custom Speech model
+  trained on call recordings is the highest-impact fix; parallel
+  Azure-Speech-telephony recognizer (see backlog above) is the easier win.
+- **Current production config (mirrors `danish-voice-lab`):**
+  - Voice: `openai` / `ash` (male, multilingual, sounds great on Danish calls)
+  - STT: `azure-speech` + `da-DK` + Norlys phrase_list (see appsettings.json)
+  - VAD: `azure_semantic_vad` 0.3 / 300 ms / 500 ms (raise threshold toward
+    0.7 only if PSTN noise causes false barge-ins)
+  - Echo cancel + deep noise suppression on
+- **Test the right call.** When verifying voice/config changes after a deploy,
+  always check the App Insights `Session accepted by server: ...` trace
+  _timestamp_ against the GitHub Actions deploy completion time. A call
+  placed before the new revision finished rolling out will still hit the
+  old container and "look broken".
+
+### Deploy / CI gotchas
+
+- **OIDC app reg gets nuked nightly** in MngEnv tenants. When deploys fail
+  with `azure/login` "Not all values are present", the secrets are empty
+  because the SP was deleted. Fix: re-run `./scripts/setup-oidc.ps1` (it
+  rewrites `AZURE_CLIENT_ID` / `TENANT_ID` / `SUBSCRIPTION_ID` on the
+  `production` GitHub environment).
+- **RBAC for a freshly-created SP needs ~2 min to propagate.** First deploy
+  immediately after running setup-oidc.ps1 may fail with "No subscriptions
+  found"; just retry the workflow.
+- **CI must write `.version.json` itself** for `admin-chat`. The Dockerfile
+  does `COPY ... .version.json ./` but locally it's only created by azd's
+  prepackage hook. The `deploy.yml` build job has a step that writes
+  `{ "appVersion": "1.0.<commit-count>-<sha>", "buildNumber": "<count>" }`
+  before the docker build. The schema **must** match `nuxt.config.ts`
+  (`appVersion`, `buildNumber`) — a mismatch yields `vundefined` in the UI.
+- **Build job needs `fetch-depth: 0`** so `git rev-list --count HEAD`
+  returns the real commit count, not 1.
+- **Deployed env vars override `appsettings.json`.** Always check
+  `az containerapp show ... --query "properties.template.containers[0].env"`
+  before assuming the JSON is what's running.
