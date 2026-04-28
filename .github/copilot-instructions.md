@@ -4,6 +4,8 @@ Multi-agent platform: Azure AI Foundry + Azure Container Apps. Admin chat UI (Nu
 
 > **Detailed architecture, telemetry, data flows, and gotchas** → see `.github/agents/app-architecture-dependencies.agent.md`
 
+read all code in this repo as official reference: https://github.com/microsoft-foundry/voicelive-samples/tree/main/csharp
+
 ## Codebase Structure
 
 ```
@@ -21,6 +23,8 @@ code/
     agent/             # CallerAgent, AcsMediaStreamingHandler, VoiceLive, ConversationAnalysis
   console-demo-voicelive/  # Local-only Voice Live CLI demo (.NET 10)
   speech-tool/         # Local-only TTS CLI (.NET 8)
+danish-voice-lab/      # Local-only sandbox: speak Danish ↔ Voice Live (.NET 10).
+                       # Tweak voice/instructions/VAD here before porting to caller-agent.
 scripts/               # provision-phone-number, setup-oidc, setup-eventgrid
 infra/                 # Bicep (main.bicep → resources.bicep)
 ```
