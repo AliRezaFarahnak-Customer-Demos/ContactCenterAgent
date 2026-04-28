@@ -296,9 +296,9 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
             :key="f.label"
             class="flex items-baseline gap-2 text-sm"
           >
-            <span class="text-amber-800 font-medium min-w-16">{{
-              f.label
-            }}:</span>
+            <span class="text-amber-800 font-medium min-w-16"
+              >{{ f.label }}:</span
+            >
             <span class="font-mono text-amber-900 select-all">{{
               f.value
             }}</span>
