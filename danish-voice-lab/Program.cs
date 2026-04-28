@@ -345,7 +345,12 @@ public static class Program
                 $"Shared personas.json not found at '{path}'. Check DanishVoiceLab.csproj <Content Include>.");
 
         using var stream = File.OpenRead(path);
-        using var doc = JsonDocument.Parse(stream);
+        using var doc = JsonDocument.Parse(stream, new JsonDocumentOptions
+        {
+            // Tolerate trailing commas and comments in case someone hand-edits.
+            AllowTrailingCommas = true,
+            CommentHandling = JsonCommentHandling.Skip,
+        });
         foreach (var p in doc.RootElement.EnumerateArray())
         {
             if (p.TryGetProperty("id", out var idEl) &&
