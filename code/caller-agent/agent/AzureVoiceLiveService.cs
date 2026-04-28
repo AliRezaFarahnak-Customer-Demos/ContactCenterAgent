@@ -249,16 +249,17 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
             //       without redeploying.
             // All knobs live under "VoiceLive:Vad" in appsettings.json.
             // ---------------------------------------------------------------------
-            var vadThreshold = m_configuration.GetValue<double>("VoiceLive:Vad:Threshold", 0.7);
-            var vadPrefixPaddingMs = m_configuration.GetValue<int>("VoiceLive:Vad:PrefixPaddingMs", 400);
+            var vadType = m_configuration.GetValue<string>("VoiceLive:Vad:Type") ?? "azure_semantic_vad";
+            var vadThreshold = m_configuration.GetValue<double>("VoiceLive:Vad:Threshold", 0.3);
+            var vadPrefixPaddingMs = m_configuration.GetValue<int>("VoiceLive:Vad:PrefixPaddingMs", 300);
             var vadSilenceMs = m_configuration.GetValue<int>(
                 isEnglish ? "VoiceLive:Vad:SilenceDurationMsEnglish" : "VoiceLive:Vad:SilenceDurationMsOther",
-                isEnglish ? 500 : 900);
+                500);
             var vadInterruptResponse = m_configuration.GetValue<bool>("VoiceLive:Vad:InterruptResponse", true);
 
             m_logger.LogInformation(
-                "VAD config: threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, interrupt={Interrupt}, language={Lang}",
-                vadThreshold, vadPrefixPaddingMs, vadSilenceMs, vadInterruptResponse, m_languageCode ?? "(auto)");
+                "VAD config: type={Type}, threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, interrupt={Interrupt}, language={Lang}",
+                vadType, vadThreshold, vadPrefixPaddingMs, vadSilenceMs, vadInterruptResponse, m_languageCode ?? "(auto)");
 
             var jsonObject = new
             {
@@ -273,7 +274,7 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                     instructions = effectivePrompt,
                     turn_detection = new
                     {
-                        type = "azure_semantic_vad_multilingual",
+                        type = vadType,
                         threshold = vadThreshold,
                         prefix_padding_ms = vadPrefixPaddingMs,
                         silence_duration_ms = vadSilenceMs,
@@ -414,19 +415,19 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
             string? transcriptionHint,
             ILogger logger)
         {
-            // Default whisper-1 (best subjective quality on short Danish phone calls today).
-            // Override with Transcription:Model = "gpt-4o-transcribe" or "gpt-4o-mini-transcribe".
-            var model = configuration.GetValue<string>("Transcription:Model") ?? "whisper-1";
+            // Default azure-speech (matches danish-voice-lab; flagship Microsoft Danish ASR with phrase-list bias).
+            // Override with Transcription:Model = "whisper-1" / "gpt-4o-transcribe" / "gpt-4o-mini-transcribe".
+            var model = configuration.GetValue<string>("Transcription:Model") ?? "azure-speech";
 
             var config = new Dictionary<string, object> { ["model"] = model };
 
-            // Mirror console app: pass the bare ISO-639-1 code ("da", "en") — no BCP-47 promotion.
-            // Whisper-1 accepts both, but the console version uses the short form and that's the
-            // configuration the user has validated as "working well".
-            var lang = languageCode;
-            if (!string.IsNullOrEmpty(lang) && lang.Length > 2)
+            // Language: explicit Transcription:Language override (e.g. "da-DK") wins; else fall back to the
+            // per-call language code. Pass it through verbatim — azure-speech wants BCP-47 (da-DK), the
+            // OpenAI Whisper family accepts both ISO-639-1 and BCP-47.
+            var lang = configuration.GetValue<string>("Transcription:Language");
+            if (string.IsNullOrEmpty(lang))
             {
-                lang = lang.Substring(0, 2).ToLowerInvariant();
+                lang = languageCode;
             }
 
             if (!string.IsNullOrEmpty(lang))
@@ -434,24 +435,39 @@ CRITICAL LANGUAGE RULE — READ CAREFULLY:
                 config["language"] = lang;
             }
 
-            // Vocabulary prompt: only send if the caller / config explicitly provides one.
-            // Console app sends NO prompt and produces clean transcripts; the long Danish keyword
-            // list was biasing recognition. Opt-in only via per-call hint or Transcription:DefaultPrompt.
-            var prompt = transcriptionHint;
-            if (string.IsNullOrEmpty(prompt))
-            {
-                prompt = configuration.GetValue<string>($"Transcription:DefaultPrompt:{lang}")
-                      ?? configuration.GetValue<string>("Transcription:DefaultPrompt:Default");
-            }
+            // azure-speech uses `phrase_list` (vocabulary boosting). Whisper / gpt-4o-transcribe use `prompt`.
+            var isAzureSpeech = string.Equals(model, "azure-speech", StringComparison.OrdinalIgnoreCase);
 
-            if (!string.IsNullOrEmpty(prompt))
+            if (isAzureSpeech)
             {
-                config["prompt"] = prompt;
+                var phrases = configuration.GetSection("Transcription:PhraseList").Get<string[]>();
+                if (phrases is { Length: > 0 })
+                {
+                    config["phrase_list"] = phrases;
+                }
+            }
+            else
+            {
+                // Vocabulary prompt for Whisper-family models. Caller-supplied hint wins.
+                var prompt = transcriptionHint;
+                if (string.IsNullOrEmpty(prompt))
+                {
+                    prompt = configuration.GetValue<string>($"Transcription:DefaultPrompt:{lang}")
+                          ?? configuration.GetValue<string>("Transcription:DefaultPrompt:Default");
+                }
+
+                if (!string.IsNullOrEmpty(prompt))
+                {
+                    config["prompt"] = prompt;
+                }
             }
 
             logger.LogInformation(
-                "Transcription config: model={Model}, language={Language}, promptLen={PromptLen}",
-                model, lang ?? "(auto)", prompt?.Length ?? 0);
+                "Transcription config: model={Model}, language={Language}, phrases={Phrases}, promptLen={PromptLen}",
+                model,
+                lang ?? "(auto)",
+                isAzureSpeech ? (config.TryGetValue("phrase_list", out var pl) ? ((string[])pl).Length : 0) : 0,
+                isAzureSpeech ? 0 : (config.TryGetValue("prompt", out var p) ? ((string)p).Length : 0));
 
             return config;
         }
