@@ -49,6 +49,18 @@ public static class VoiceLiveDefaults
     public const string DefaultVoiceLocale = "da-DK";
 
     /// <summary>
+    /// mstts:express-as style applied to the voice (RealtimeAzureStandardVoice.style).
+    /// Docs claim styles are English-only but lab-verified 29 Apr 2026 they DO affect
+    /// da-DK HD Omni audibly. "friendly" picked as Norlys default after the 5-mood
+    /// judge A/B (see .github/prompts/try-moods.prompt.md).
+    ///
+    /// ONLY meaningful on HD / HD Omni voices. Sent on the wire only when
+    /// <see cref="IsHdVoice"/> returns true; standard neural voices ignore it (and
+    /// unknown fields can trigger silent fallback to a default voice).
+    /// </summary>
+    public const string DefaultVoiceStyle = "friendly";
+
+    /// <summary>
     /// True when <paramref name="voiceName"/> is an HD or HD Omni voice (contains
     /// ":DragonHD" suffix). Use this to gate sending the temperature field — standard
     /// neural voices don't accept it and the docs warn unsupported fields can cause

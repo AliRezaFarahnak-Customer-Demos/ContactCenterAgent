@@ -338,6 +338,7 @@ namespace CallAutomation.AzureAI.VoiceLive
             var voiceType = configuration.GetValue<string>("Voice:Type") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceType;
             var voiceName = configuration.GetValue<string>("Voice:Name") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceName;
             var voiceTemp = configuration.GetValue<double>("Voice:Temperature", ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceTemperature);
+            var voiceStyle = configuration.GetValue<string>("Voice:Style") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceStyle;
             var voiceEndpointId = configuration.GetValue<string>("Voice:EndpointId");
 
             var voice = new Dictionary<string, object>
@@ -362,13 +363,21 @@ namespace CallAutomation.AzureAI.VoiceLive
                     break;
 
                 default: // azure-standard
-                    // Send temperature ONLY for HD / HD Omni voices (name contains ":DragonHD").
-                    // Standard neural voices reject/ignore it; the docs warn unsupported fields
+                    // Send temperature + style ONLY for HD / HD Omni voices (name contains ":DragonHD").
+                    // Standard neural voices reject/ignore them; the docs warn unsupported fields
                     // can cause silent fallback to a default voice. Mirrors danish-voice-lab
                     // (BuildAzureStandardVoice helper).
                     voice["type"] = "azure-standard";
                     if (ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.IsHdVoice(voiceName))
+                    {
                         voice["temperature"] = voiceTemp;
+
+                        // mstts:express-as style — lab-verified to audibly affect da-DK HD Omni.
+                        // "friendly" is the Norlys default (see try-moods.prompt.md). Set
+                        // Voice:Style to empty string in appsettings.json to opt out.
+                        if (!string.IsNullOrWhiteSpace(voiceStyle))
+                            voice["style"] = voiceStyle;
+                    }
 
                     // ENFORCE locale so the voice can't drift toward a generic
                     // Scandinavian / Swedish accent on English loanwords or digits.
@@ -381,10 +390,11 @@ namespace CallAutomation.AzureAI.VoiceLive
                     break;
             }
 
-            logger.LogInformation("Voice config: type={Type}, name={Name}, locale={Locale}, temperature={Temp}",
+            logger.LogInformation("Voice config: type={Type}, name={Name}, locale={Locale}, temperature={Temp}, style={Style}",
                 voiceType, voiceName,
                 voice.ContainsKey("locale") ? voice["locale"] : (object)"(omitted)",
-                voice.ContainsKey("temperature") ? voice["temperature"] : (object)"(omitted)");
+                voice.ContainsKey("temperature") ? voice["temperature"] : (object)"(omitted)",
+                voice.ContainsKey("style") ? voice["style"] : (object)"(omitted)");
 
             return voice;
         }
