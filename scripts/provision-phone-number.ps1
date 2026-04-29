@@ -34,7 +34,10 @@ param(
     [string]$AreaCode = "",
 
     [Parameter(Mandatory = $false)]
-    [string]$ContainerAppName = "ca-caller-agent"
+    [string]$ContainerAppName = "ca-caller-agent",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -268,11 +271,12 @@ catch {
     }
 }
 
-if ($existingNumbers -and $existingNumbers.Count -gt 0) {
+if ($existingNumbers -and $existingNumbers.Count -gt 0 -and -not $Force) {
     $phoneNumber = $existingNumbers[0].phoneNumber
     Write-Host ""
     Write-Host "  SKIPPING PROVISIONING - Phone number already exists!" -ForegroundColor Green
     Write-Host "  Existing number: $phoneNumber" -ForegroundColor Cyan
+    Write-Host "  (pass -Force to purchase an additional number)" -ForegroundColor Gray
     Write-Host ""
 }
 else {
