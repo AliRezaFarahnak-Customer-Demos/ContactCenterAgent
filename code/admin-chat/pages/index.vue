@@ -1,57 +1,9 @@
 <script setup lang="ts">
-const {
-  messages,
-  isLoading,
-  error,
-  sendMessage,
-  stopGeneration,
-  clearMessages,
-} = useAgentChat();
-
 const { sessions, addSession, removeSession, clearEnded, toggleExpanded } =
   useCallSessions();
 
 const config = useRuntimeConfig();
-const input = ref("");
-const chatContainer = ref<HTMLElement | null>(null);
-const inputEl = ref<HTMLInputElement | null>(null);
 const callError = ref<string | null>(null);
-
-async function send() {
-  if (!input.value.trim()) return;
-  sendMessage(input.value);
-  input.value = "";
-  await nextTick();
-  inputEl.value?.focus();
-}
-
-// Auto-scroll on new messages
-watch(
-  () => messages.value.length,
-  async () => {
-    await nextTick();
-    chatContainer.value?.scrollTo({
-      top: chatContainer.value.scrollHeight,
-      behavior: "smooth",
-    });
-  },
-);
-watch(
-  () => messages.value[messages.value.length - 1]?.content,
-  async () => {
-    await nextTick();
-    chatContainer.value?.scrollTo({
-      top: chatContainer.value.scrollHeight,
-      behavior: "smooth",
-    });
-  },
-);
-watch(isLoading, async (loading) => {
-  if (!loading) {
-    await nextTick();
-    inputEl.value?.focus();
-  }
-});
 
 // ---------------------------------------------------------------------------
 // Place a call via the form
@@ -138,20 +90,18 @@ const activeCount = computed(
       <div class="flex-1" />
       <span
         class="font-headline text-base font-bold text-norlys-petroleum-3 hidden sm:inline"
-        >CallCenter</span
+        >Agentic Call Center</span
       >
     </header>
 
     <!-- ============== LEFT — CALL COMPOSER ============== -->
-    <div
-      class="hidden lg:flex pt-12 w-[32rem] xl:w-[40rem] 2xl:w-[48rem] shrink-0 h-full"
-    >
+    <div class="hidden lg:flex pt-12 flex-1 min-w-0 h-full">
       <CallComposer @call="startCallFromComposer" />
     </div>
 
     <!-- ============== CENTER — CALL SESSIONS (sentiment UI) ============== -->
     <aside
-      class="hidden lg:flex flex-col w-[28rem] xl:w-[32rem] shrink-0 h-full pt-12 border-r border-norlys-light-petroleum bg-white"
+      class="hidden lg:flex flex-col w-[28rem] xl:w-[34rem] 2xl:w-[40rem] shrink-0 h-full pt-12 border-l border-norlys-light-petroleum bg-white"
     >
       <div
         class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center justify-between"
@@ -213,147 +163,12 @@ const activeCount = computed(
       </div>
     </aside>
 
-    <!-- ============== RIGHT — CHAT ============== -->
-    <div class="flex-1 flex flex-col h-full min-w-0 pt-12">
-      <div ref="chatContainer" class="flex-1 overflow-y-auto">
-        <div
-          class="px-4 py-6 space-y-4 max-w-3xl mx-auto"
-          :class="
-            messages.length === 0
-              ? 'min-h-full flex flex-col justify-center py-8'
-              : ''
-          "
-        >
-          <!-- Welcome -->
-          <div
-            v-if="messages.length === 0"
-            class="flex flex-col items-center text-center gap-4"
-          >
-            <div
-              class="w-12 h-12 rounded-full bg-norlys-red flex items-center justify-center"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-6 h-6 text-norlys-sand"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path
-                  d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
-                />
-              </svg>
-            </div>
-            <div class="flex flex-col items-center max-w-md">
-              <h1
-                class="font-headline text-3xl font-bold text-norlys-petroleum-3 text-center"
-              >
-                CallCenter Demo
-              </h1>
-              <p class="text-sm text-norlys-ink/70 mt-1 text-center">
-                Start et opkald fra panelet til venstre, eller bed assistenten
-                herunder om hjælp.
-              </p>
-            </div>
-          </div>
-
-          <!-- Message list -->
-          <ChatMessage
-            v-for="(msg, i) in messages.filter(
-              (m) =>
-                m.role !== 'tool' &&
-                !(m.role === 'assistant' && !m.content && m.toolCalls?.length),
-            )"
-            :key="msg.id"
-            :msg="msg"
-            :index="i"
-          />
-
-          <!-- Errors -->
-          <div v-if="error" class="text-center text-norlys-red text-sm py-2">
-            {{ error }}
-          </div>
-          <div
-            v-if="callError"
-            class="text-center text-norlys-red text-sm py-2"
-          >
-            Opkaldsfejl: {{ callError }}
-          </div>
-        </div>
-      </div>
-
-      <!-- Clear chat -->
-      <div
-        v-if="messages.length > 0"
-        class="flex justify-center px-4 pb-2 max-w-3xl mx-auto w-full"
-      >
-        <button
-          class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-norlys-light-petroleum text-norlys-petroleum text-xs hover:bg-norlys-sand-2 transition-colors"
-          @click="clearMessages()"
-        >
-          Ryd samtale
-        </button>
-      </div>
-
-      <!-- Input -->
-      <div
-        class="px-4 py-3 max-w-3xl mx-auto w-full pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-      >
-        <div
-          class="flex items-center gap-3 border border-norlys-light-petroleum rounded-full px-5 py-3 bg-white shadow-sm focus-within:border-norlys-red focus-within:ring-1 focus-within:ring-norlys-red/20 transition-all"
-        >
-          <input
-            ref="inputEl"
-            v-model="input"
-            type="text"
-            placeholder="Spørg assistenten…"
-            class="flex-1 bg-transparent text-base text-norlys-ink placeholder:text-norlys-petroleum/50 focus:outline-none font-body"
-            @keydown.enter.prevent="send"
-          />
-          <button
-            v-if="isLoading"
-            class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-norlys-petroleum hover:bg-norlys-petroleum-3 text-norlys-sand transition-colors"
-            @click="stopGeneration"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
-          </button>
-          <button
-            v-else
-            class="shrink-0 w-8 h-8 flex items-center justify-center rounded-full transition-colors"
-            :class="
-              input.trim()
-                ? 'bg-norlys-red text-norlys-sand hover:bg-norlys-red-3'
-                : 'bg-norlys-light-petroleum text-norlys-petroleum/40 cursor-default'
-            "
-            :disabled="!input.trim()"
-            @click="send"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="12" y1="19" x2="12" y2="5" />
-              <polyline points="5 12 12 5 19 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
+    <!-- ============== RIGHT — (chat panel removed; see copilot-instructions for restore notes) ============== -->
+    <div
+      v-if="callError"
+      class="fixed top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-lg bg-norlys-red text-norlys-sand text-sm shadow-md"
+    >
+      Opkaldsfejl: {{ callError }}
     </div>
 
     <!-- Single version badge (bottom-right) — git commit count -->

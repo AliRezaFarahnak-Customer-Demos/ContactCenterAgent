@@ -327,32 +327,8 @@ resource adminChatApp 'Microsoft.App/containerApps@2025-07-01' = {
           }
           env: [
             {
-              name: 'AGENT_URL'
-              value: 'http://localhost:8000/'
-            }
-            {
-              name: 'ASPNETCORE_URLS'
-              value: 'http://+:8000'
-            }
-            {
-              name: 'AzureOpenAI__Endpoint'
-              value: aiFoundry.properties.endpoint
-            }
-            {
-              name: 'AzureOpenAI__Model'
-              value: 'gpt-5.4-nano'
-            }
-            {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
-            }
-            {
-              name: 'AppInsights__ApplicationId'
-              value: appInsights.properties.AppId
-            }
-            {
-              name: 'CallerAgent__Url'
-              value: 'https://${callerAgentApp.properties.configuration.ingress.fqdn}'
             }
             {
               name: 'NUXT_CALLER_AGENT_URL'
@@ -365,10 +341,6 @@ resource adminChatApp 'Microsoft.App/containerApps@2025-07-01' = {
             {
               name: 'LOG_ANALYTICS_WORKSPACE_ID'
               value: logAnalytics.properties.customerId
-            }
-            {
-              name: 'OTEL_SERVICE_NAME'
-              value: 'AdminChatAgent'
             }
             {
               name: 'PORT'
@@ -394,21 +366,11 @@ resource adminChatApp 'Microsoft.App/containerApps@2025-07-01' = {
 }
 
 // ---------------------------------------------------------------------------
-// 10. Role Assignment — Cognitive Services OpenAI User for Admin Chat App
+// 10. (removed) Cognitive Services OpenAI User role for Admin Chat App.
+// The .NET sidecar that called Azure OpenAI was removed when the chat UI
+// was deleted. See .github/copilot-instructions "Removed: AdminChat .NET
+// sidecar" if this needs restoring.
 // ---------------------------------------------------------------------------
-// Role: Cognitive Services OpenAI User (5e0bd9bd-7b93-4f28-af87-19fc36ad61bd)
-resource adminChatOpenAIRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(aiFoundry.id, adminChatApp.id, '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
-  scope: aiFoundry
-  properties: {
-    principalId: adminChatApp.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
-    )
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 11. Role Assignment — Monitoring Reader for Admin Chat App (App Insights query)

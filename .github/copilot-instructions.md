@@ -1,6 +1,6 @@
 # Contact Center Agent — Copilot Instructions
 
-Multi-agent platform on Azure: **admin-chat** (Nuxt 3 SPA + .NET 10 backend, AG-UI + MS Agent Framework) and **caller-agent** (.NET 10, ACS + Voice Live API). Deployed via `azd` to Azure Container Apps. Local `azd up` is allowed.
+Multi-service platform on Azure: **admin-chat** (Nuxt 3 SPA, no .NET backend) and **caller-agent** (.NET 10, ACS + Voice Live API). Deployed via `azd` to Azure Container Apps. Local `azd up` is allowed.
 
 Voice Live reference code: https://github.com/microsoft-foundry/voicelive-samples/tree/main/csharp
 
@@ -26,8 +26,8 @@ When the user asks "what voice/model/prompt are we using?" → open the actual f
 ## Local development
 
 ```bash
-# Admin Chat (Nuxt + .NET backend)
-cd code/admin-chat && npm install && npm run dev          # ports 3000 + 8000
+# Admin Chat (Nuxt SPA only — single process)
+cd code/admin-chat && npm install && npm run dev          # port 3000
 
 # Caller Agent (needs devtunnel for ACS callbacks)
 cd code/caller-agent/agent
@@ -87,6 +87,21 @@ These are workflow hazards that don't depend on which model/voice/version is cur
 - **Voice Live silently falls back to defaults** if you send unsupported fields (e.g. `temperature` on `azure-standard` voices). After any voice/STT change, verify via the App Insights `Session accepted by server` trace that the `voice` / `input_audio_transcription` block in `session.updated` matches what you sent.
 - **PSTN narrowband is a hard physical limit on STT** (0.3–3.4 kHz G.711). No prompt, phrase-list, or model swap can recover frequencies the network discarded. Phone-call transcripts will always look weaker than laptop-mic transcripts in `danish-voice-lab/`. The biggest-impact fix is a Custom Speech model trained on real call recordings; cheaper alternative is a parallel Azure Speech telephony recognizer for the admin-UI transcript only (see `app-architecture-dependencies.agent.md` for the sketched approach).
 - **Wire payload > SDK choice.** caller-agent talks Voice Live as raw JSON; danish-voice-lab uses the typed SDK. The server can't tell them apart — don't rewrite one to "match" the other.
+
+---
+
+## Removed: AdminChat .NET sidecar
+
+The Nuxt SPA used to ship with a co-located .NET 10 sidecar (port 8000) that exposed an AG-UI streaming chat endpoint via Microsoft Agent Framework. The chat panel and sidecar were removed because they weren't on the demo's critical path (placing/monitoring outbound voice calls). To restore:
+
+1. Recreate `code/admin-chat/agent/` with `AdminChat.csproj` (Microsoft.Agents.AI.Hosting.AGUI.AspNetCore + Azure.AI.OpenAI + Azure.Monitor.OpenTelemetry.AspNetCore) and `AdminChatAgent.cs` exposing the AG-UI endpoint at `/`.
+2. Re-add `code/admin-chat/composables/useAgentChat.ts` (SSE consumer), `code/admin-chat/components/ChatMessage.vue`, and `code/admin-chat/server/api/agent.post.ts` (proxy that reads `agentUrl` runtime config and forwards to the sidecar).
+3. In `code/admin-chat/package.json`, restore the `concurrently` dev script + `dev:agent`/`install:agent` scripts and the `concurrently` devDependency. Re-add `agentUrl` to `runtimeConfig` in `nuxt.config.ts`.
+4. In `code/admin-chat/Dockerfile`, restore the multi-stage build with the .NET sidecar (aspnet:10.0 base + Node copied in, `CMD dotnet agent/AdminChat.dll & node .output/server/index.mjs`).
+5. In `infra/resources.bicep`, re-add to the admin-chat container env: `AGENT_URL`, `ASPNETCORE_URLS`, `AzureOpenAI__Endpoint`, `AzureOpenAI__Model`, `AppInsights__ApplicationId`, `CallerAgent__Url`, `OTEL_SERVICE_NAME`. Re-add the `adminChatOpenAIRole` role assignment (Cognitive Services OpenAI User on `aiFoundry`).
+6. Restore the chat panel + welcome block in `code/admin-chat/pages/index.vue` (the right-hand `<div class="flex-1 …">` and its script setup using `useAgentChat`). Shrink the sessions aside back to a fixed width (`w-[28rem] xl:w-[32rem]`).
+
+Last working revision before removal: check `git log -- code/admin-chat/agent/AdminChat.csproj`.
 
 ---
 

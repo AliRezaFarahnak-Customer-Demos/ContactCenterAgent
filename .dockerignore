@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# Build context for the caller-agent image (see code/caller-agent/Dockerfile).
+# Build context is the repo root so the Dockerfile can reach `personas.json`
+# at the top level (referenced by code/shared/ContactCenterAgent.Shared/
+# ContactCenterAgent.Shared.csproj as ..\..\..\personas.json).
+#
+# Allowlist style: ignore everything, then un-ignore only what caller-agent
+# needs. The admin-chat image uses code/admin-chat/ as its own context and
+# is unaffected by this file.
+# ---------------------------------------------------------------------------
+
+# Ignore everything by default
+**
+
+# --- Files needed at the build root ---
+!personas.json
+
+# --- Folders the caller-agent build needs ---
+!code/caller-agent/
+!code/caller-agent/**
+!code/shared/
+!code/shared/**
+
+# --- Re-exclude junk inside allowed folders ---
+**/bin/
+**/obj/
+**/.vs/
+**/Properties/launchSettings.json
+**/appsettings.Development.json
+**/*.user
+**/*.suo
+**/.DS_Store
+**/Thumbs.db

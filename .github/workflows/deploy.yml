@@ -161,10 +161,10 @@ jobs:
             context: code/admin-chat
             image: admin-chat
           - service: caller-agent
-            # Context is `code/` (not `code/caller-agent`) so the Dockerfile
-            # can COPY the shared project at `code/shared/`. See
-            # code/caller-agent/Dockerfile.
-            context: code
+            # Context is the REPO ROOT so the Dockerfile can COPY both the
+            # shared project at code/shared/ and the repo-root personas.json
+            # that the shared csproj links in. See code/caller-agent/Dockerfile.
+            context: .
             dockerfile: code/caller-agent/Dockerfile
             image: caller-agent
 

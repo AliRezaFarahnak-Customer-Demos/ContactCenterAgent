@@ -20,7 +20,6 @@ export default defineNuxtConfig({
   css: ["~/assets/css/main.css"],
 
   runtimeConfig: {
-    agentUrl: process.env.AGENT_URL || "http://localhost:8000/",
     callerAgentUrl:
       process.env.NUXT_CALLER_AGENT_URL ||
       process.env.CALLER_AGENT_URL ||
@@ -36,7 +35,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: "CallCenter — AI-drevet kundeservice",
+      title: "Agentic Call Center — AI-drevet kundeservice",
       meta: [
         {
           name: "description",
@@ -46,7 +45,7 @@ export default defineNuxtConfig({
         // Open Graph — social sharing (LinkedIn, Twitter, etc.)
         {
           property: "og:title",
-          content: "CallCenter — AI-drevet kundeservice",
+          content: "Agentic Call Center — AI-drevet kundeservice",
         },
         {
           property: "og:description",
@@ -64,13 +63,13 @@ export default defineNuxtConfig({
         { property: "og:image:height", content: "630" },
         {
           property: "og:image:alt",
-          content: "CallCenter \u2014 AI-drevet kundeservice",
+          content: "Agentic Call Center — AI-drevet kundeservice",
         },
         // Twitter / X card
         { name: "twitter:card", content: "summary_large_image" },
         {
           name: "twitter:title",
-          content: "CallCenter — AI-drevet kundeservice",
+          content: "Agentic Call Center — AI-drevet kundeservice",
         },
         {
           name: "twitter:description",

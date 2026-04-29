@@ -4,13 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently --names ui,agent --prefix-colors blue,green \"npm run dev:ui\" \"npm run dev:agent\"",
-    "dev:ui": "nuxt dev --port 3000",
-    "dev:agent": "dotnet run --project agent/AdminChat.csproj --launch-profile http",
+    "dev": "nuxt dev --port 3000",
     "build": "nuxt build",
     "start": "node .output/server/index.mjs",
-    "install:agent": "cd agent && dotnet restore",
-    "postinstall": "nuxt prepare && npm run install:agent"
+    "postinstall": "nuxt prepare"
   },
   "dependencies": {
     "@microsoft/applicationinsights-web": "^3.3.11",
@@ -22,7 +19,6 @@
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.13.0",
     "@types/dompurify": "^3.0.5",
-    "concurrently": "^9.1.2",
     "typescript": "^5.7.0"
   }
 }
