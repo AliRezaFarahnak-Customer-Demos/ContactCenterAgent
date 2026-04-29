@@ -23,7 +23,6 @@ public class AcsMediaStreamingHandler
     private readonly string? m_phoneNumber;
     private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
     private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
-    private readonly System.Net.WebSockets.ClientWebSocket? m_preWarmedVoiceLiveWs;
     private Func<string, Task>? m_onHangUp;
 
     /// <summary>
@@ -45,8 +44,7 @@ public class AcsMediaStreamingHandler
         TelemetryClient? telemetryClient = null,
         string? phoneNumber = null,
         ChannelWriter<TranscriptionEvent>? transcriptionWriter = null,
-        ChannelWriter<AnalysisResult>? analysisWriter = null,
-        System.Net.WebSockets.ClientWebSocket? preWarmedVoiceLiveWs = null)
+        ChannelWriter<AnalysisResult>? analysisWriter = null)
     {
         m_webSocket = webSocket;
         m_configuration = configuration;
@@ -62,9 +60,8 @@ public class AcsMediaStreamingHandler
         m_callTranscriptionHint = callTranscriptionHint;
         m_transcriptionWriter = transcriptionWriter;
         m_analysisWriter = analysisWriter;
-        m_preWarmedVoiceLiveWs = preWarmedVoiceLiveWs;
 
-        m_logger.LogInformation("AcsMediaStreamingHandler initialized (custom prompt: {HasPrompt}, language: {Language}, preWarmedWs: {Warm})", callSystemPrompt != null, callLanguage ?? "default", preWarmedVoiceLiveWs != null);
+        m_logger.LogInformation("AcsMediaStreamingHandler initialized (custom prompt: {HasPrompt}, language: {Language})", callSystemPrompt != null, callLanguage ?? "default");
     }
 
     public async Task ProcessWebSocketAsync()
@@ -83,7 +80,7 @@ public class AcsMediaStreamingHandler
 
         m_logger.LogInformation("Initializing Azure Voice Live Service");
         var voiceLiveLogger = m_loggerFactory.CreateLogger<AzureVoiceLiveService>();
-        m_aiServiceHandler = new AzureVoiceLiveService(this, m_configuration, voiceLiveLogger, m_aiCredential, m_callSystemPrompt, m_callLanguage, m_callLanguageCode, m_callTranscriptionHint, m_telemetryClient, m_phoneNumber, m_transcriptionWriter, m_analysisWriter, m_preWarmedVoiceLiveWs);
+        m_aiServiceHandler = new AzureVoiceLiveService(this, m_configuration, voiceLiveLogger, m_aiCredential, m_callSystemPrompt, m_callLanguage, m_callLanguageCode, m_callTranscriptionHint, m_telemetryClient, m_phoneNumber, m_transcriptionWriter, m_analysisWriter);
 
         // Initialize AI session asynchronously (avoids sync-over-async blocking in constructor)
         await m_aiServiceHandler.InitializeAsync(m_configuration);

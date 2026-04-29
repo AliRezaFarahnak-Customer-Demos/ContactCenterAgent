@@ -73,9 +73,7 @@ Design system docs (norlys.design — gated, fonts fall back to Georgia / Arial)
 | Digital design   | https://norlys.design/document/332                           |
 | Ikoner (403 stk) | https://norlys.design/document/295                           |
 
-Hard rules: headlines bold + left-aligned only · never `font-mono` in production UI (use `tabular-nums` for digits) · logo top-right or bottom-left, respektafstand = 1× Brand O (small) / 1.5× (≥A4), width ≤ 50% format · red is an accent, never dominant · icons monochrome ≤ 40px (default 20px), inherit text color, never recolored/rotated · text color: Warm Grey on Sand/Light Petroleum/light, Sand on Red/Dark Petroleum/dark · WCAG AA contrast (≥ 4.5:1 body, ≥ 3:1 large) · mobile-first, "synligt næste modul" on scroll, less-is-more whitespace · Danish UI tone: enkelhed, handlekraft, optimisme; English for code/errors.
-
-Brand principles to evoke (don't quote, just feel): enkelhed, handlekraft, optimisme + underspillet fællesskab/ansvarlighed/nytænkning.
+Hard rules: headlines bold + left-aligned only · never `font-mono` in production UI (use `tabular-nums` for digits) · logo top-right or bottom-left · red is an accent, never dominant · WCAG AA contrast (≥ 4.5:1 body, ≥ 3:1 large) · Danish UI tone: enkelhed, handlekraft, optimisme; English for code/errors.
 
 ---
 
