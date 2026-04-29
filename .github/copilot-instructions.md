@@ -163,8 +163,8 @@ The `:DragonHDOmniLatestNeural` suffix on the `name` is what flips the server in
 - ✅ `rate` (0.5–1.5 string) — works on both standard and HD.
 - ✅ `pitch`, `volume`, `style`, `locale`, `prefer_locales`, `custom_lexicon_url` — all on `RealtimeAzureStandardVoice`.
 - ❌ `top_p` / `top_k` / `cfg_scale` — these are HD Omni `parameters=` SSML attributes for direct Speech SDK use. **Not exposed through Voice Live JSON.**
-- ❌ `mstts:express-as` styles (cheerful, empathetic, etc.) — HD Omni styles are **English-only**. Danish gets default delivery.
-- ✅ Paralinguistic tokens (`[sighing]`, `[laughter]`, `[breathing]`) — work in all languages, including Danish. Probably inappropriate for Norlys customer service.
+- ⚠️ `mstts:express-as` styles (cheerful, empathetic, friendly, professional, customer-service, etc.) — **DOCS SAY English-only, BUT empirically work on `da-DK` HD Omni** (lab-verified 29 Apr 2026 via `code/speech-tool/ danish-lab` against direct Speech SDK). Voice Live exposes `style` on `RealtimeAzureStandardVoice` and accepts the field. **Caveat:** styles aren't reachable through the Voice Live JSON wire payload that `caller-agent` builds today — `BuildVoiceConfig` would need a `style` field added. Validate on PSTN before relying on it: laptop-speaker results may overstate the effect once G.711 strips fidelity.
+- ✅ Paralinguistic tokens (`[sighing]`, `[laughter]`, `[breathing]`) — work in all languages, including Danish (lab-confirmed). Probably inappropriate for Norlys customer service.
 - ⚠️ The `instructions` system prompt only weakly steers Azure-voice prosody (per docs: _"may not apply to Azure voices"_). HD Omni's automatic prosody prediction does the heavy lifting; pacing should come from punctuation in model output.
 
 **PSTN ceiling still applies on output.** HD's quality gain is full-bandwidth on a laptop speaker but compressed through G.711 0.3–3.4 kHz on a phone call. The benefit on PSTN is mostly _prosody/intonation/pause naturalness_, not raw fidelity. Test in `danish-voice-lab/` with headphones to hear the full upside; expect a smaller (but still real) win on actual ACS calls.
@@ -193,7 +193,7 @@ Audited against the [official Voice Live customization docs](https://learn.micro
 
 Things deliberately NOT pursued (would hurt or are unsupported for `da-DK`):
 
-- `mstts:express-as` styles (cheerful/empathetic/etc.) — HD Omni styles are English-only.
+- ~~`mstts:express-as` styles~~ — was previously listed as English-only per the docs; **lab tests on 29 Apr 2026 showed they DO affect Danish on HD Omni** (`friendly`, `professional`, `customer-service` were all audibly different from baseline). Now a candidate for prod, blocked only on adding `style` to `BuildVoiceConfig` and PSTN validation. See `code/speech-tool/Program.cs` (`danish-lab` command, variants `60-cs-*` and `80-narrated-*`).
 - `remove_filler_words` — English-only feature.
 - `gender` / `age` / `description` from the Dragon HD Omni catalog JSON — those are catalog metadata, NOT wire fields. Sending them risks silent fallback.
 - Sending `temperature` on standard neural voices — already gated by `IsHdVoice()` because docs warn unsupported fields can trigger silent fallback.
