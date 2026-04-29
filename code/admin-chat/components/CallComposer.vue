@@ -302,7 +302,7 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
           </svg>
           <span
             class="text-xs font-semibold uppercase tracking-wide text-amber-800"
-            >Demo: hemmelige værdier kunden skal sige</span
+            >Sikkerhedsspørgsmål</span
           >
         </div>
         <ul class="space-y-1">

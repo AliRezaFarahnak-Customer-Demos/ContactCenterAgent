@@ -78,6 +78,11 @@ var callConnections = new ConcurrentDictionary<string, string>();
 var transcriptionChannels = new ConcurrentDictionary<string, Channel<TranscriptionEvent>>();
 // Live analysis channels (keyed by contextId) — SSE consumers read analysis results
 var analysisChannels = new ConcurrentDictionary<string, Channel<AnalysisResult>>();
+// Pre-warmed Voice Live WebSockets (keyed by contextId). For outbound calls we open
+// the WS to Voice Live during the PSTN dial wait (~5-8s) so the hot path can skip
+// token+connect (~300-600ms). Stored as (ws, createdAtUtc) so the cleanup loop can
+// drop unclaimed warm sockets if the call never picked up. See /api/outboundCall.
+var warmVoiceLiveSockets = new ConcurrentDictionary<string, (System.Net.WebSockets.ClientWebSocket Ws, DateTime CreatedAt)>();
 
 // Global call log — subscriber channels for broadcasting call events to multiple SSE clients
 var callLogSubscribers = new ConcurrentDictionary<string, Channel<CallLogEntry>>();
@@ -187,11 +192,50 @@ app.MapPost("/api/outboundCall", async (
     // Azure.Core's token cache so we always get a brand-new token. ACS takes
     // several seconds to dial, so the token will still be valid when the
     // WebSocket connects and AzureVoiceLiveService uses it.
-    await aiCredential.GetTokenAsync(
+    var freshToken = await aiCredential.GetTokenAsync(
         new Azure.Core.TokenRequestContext(
             scopes: new[] { "https://cognitiveservices.azure.com/.default" },
             claims: "{}"),
         CancellationToken.None);
+
+    // Fire-and-forget: pre-warm the Voice Live WebSocket in parallel with the PSTN
+    // dial. By the time the callee picks up (~5-8s later) and ACS opens the media
+    // WebSocket to /ws, this socket is already connected — saving ~300-600ms off
+    // "callee picks up → first AI word". Falls back to cold connect if pre-warm
+    // fails or is closed by the time the WS is claimed.
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            var voiceLiveEndpoint = builder.Configuration.GetValue<string>("AzureOpenAI:Endpoint");
+            var voiceLiveModel = builder.Configuration.GetValue<string>("AzureOpenAI:DeploymentName") ?? "gpt-realtime";
+            if (string.IsNullOrEmpty(voiceLiveEndpoint)) return;
+
+            var wsUrl = new Uri($"{voiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version=2025-10-01&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}");
+            var warmWs = new System.Net.WebSockets.ClientWebSocket();
+            warmWs.Options.SetRequestHeader("Authorization", $"Bearer {freshToken.Token}");
+
+            var warmStart = DateTime.UtcNow;
+            using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await warmWs.ConnectAsync(wsUrl, connectCts.Token);
+            var warmMs = (DateTime.UtcNow - warmStart).TotalMilliseconds;
+
+            if (warmVoiceLiveSockets.TryAdd(contextId, (warmWs, DateTime.UtcNow)))
+            {
+                logger.LogInformation("Pre-warmed Voice Live WS in {WarmMs:F0}ms for context {ContextId}", warmMs, contextId);
+            }
+            else
+            {
+                // Race — another caller already won; dispose ours.
+                await warmWs.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "duplicate", CancellationToken.None);
+                warmWs.Dispose();
+            }
+        }
+        catch (Exception warmEx)
+        {
+            logger.LogWarning(warmEx, "Voice Live pre-warm failed for context {ContextId} (will fall back to cold connect)", contextId);
+        }
+    });
 
     var target = new PhoneNumberIdentifier(request.PhoneNumber);
     var caller = new PhoneNumberIdentifier(acsPhoneNumber);
@@ -519,6 +563,20 @@ app.Use(async (context, next) =>
                     analysisWriter = axChannel.Writer;
                 }
 
+                // Claim the pre-warmed Voice Live WebSocket if one was set up for this
+                // contextId during /api/outboundCall. ACS opens TWO media WebSockets per
+                // call — TryRemove ensures only the first one consumes the warm socket;
+                // the second falls through to a cold connect (its latency doesn't matter,
+                // it's the duplicate one). If the warm socket is no longer Open (timed out
+                // or callee never picked up), AzureVoiceLiveService falls back to cold.
+                System.Net.WebSockets.ClientWebSocket? warmVoiceLiveWs = null;
+                if (!string.IsNullOrEmpty(wsContextId) && warmVoiceLiveSockets.TryRemove(wsContextId, out var warmEntry))
+                {
+                    warmVoiceLiveWs = warmEntry.Ws;
+                    logger.LogInformation("Claimed pre-warmed Voice Live WS for context {ContextId} (age: {AgeMs:F0}ms, state: {State})",
+                        wsContextId, (DateTime.UtcNow - warmEntry.CreatedAt).TotalMilliseconds, warmVoiceLiveWs.State);
+                }
+
                 var mediaService = new AcsMediaStreamingHandler(
                     webSocket,
                     builder.Configuration,
@@ -532,7 +590,8 @@ app.Use(async (context, next) =>
                     telemetryClient,
                     callPhoneNumber,
                     transcriptionWriter,
-                    analysisWriter);
+                    analysisWriter,
+                    warmVoiceLiveWs);
 
                 // Register hang-up callback so the AI can disconnect the call
                 if (!string.IsNullOrEmpty(wsContextId))
@@ -740,6 +799,41 @@ app.MapGet("/api/calls/history", (ILogger<Program> logger) =>
 
     logger.LogInformation("Call log history requested, returning {Count} active entries (of {Total} total)", active.Length, callLogHistory.Count);
     return Results.Ok(active);
+});
+
+// Background cleanup: drop pre-warmed Voice Live WebSockets that were never claimed
+// (callee never picked up, ACS never opened the media WS, etc.). Voice Live closes
+// idle WS at ~60s anyway, but actively closing ours frees the connection sooner
+// and keeps the dictionary bounded.
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(30));
+        var now = DateTime.UtcNow;
+        foreach (var key in warmVoiceLiveSockets.Keys.ToArray())
+        {
+            if (warmVoiceLiveSockets.TryGetValue(key, out var entry) &&
+                (now - entry.CreatedAt) > TimeSpan.FromMinutes(2))
+            {
+                if (warmVoiceLiveSockets.TryRemove(key, out var stale))
+                {
+                    try
+                    {
+                        if (stale.Ws.State == System.Net.WebSockets.WebSocketState.Open)
+                        {
+                            await stale.Ws.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "unclaimed", CancellationToken.None);
+                        }
+                    }
+                    catch { /* best effort */ }
+                    finally
+                    {
+                        stale.Ws.Dispose();
+                    }
+                }
+            }
+        }
+    }
 });
 
 app.Run();

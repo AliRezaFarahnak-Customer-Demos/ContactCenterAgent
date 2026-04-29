@@ -28,6 +28,7 @@ namespace CallAutomation.AzureAI.VoiceLive
 
 
         private ClientWebSocket m_azureVoiceLiveWebsocket = null!;
+        private readonly ClientWebSocket? m_preWarmedWebsocket;
         private readonly ILogger<AzureVoiceLiveService> m_logger;
         private readonly string? m_language;
         private readonly string? m_languageCode;
@@ -38,6 +39,7 @@ namespace CallAutomation.AzureAI.VoiceLive
         private Func<string, Task>? m_onHangUp;
         private bool m_pendingHangUp;
         private string? m_pendingHangUpReason;
+        private DateTime? m_responseCreateSentAt; // for first-audio-chunk latency telemetry
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
         private readonly IConfiguration m_configuration;
@@ -64,7 +66,8 @@ namespace CallAutomation.AzureAI.VoiceLive
             TelemetryClient? telemetryClient = null,
             string? phoneNumber = null,
             ChannelWriter<TranscriptionEvent>? transcriptionWriter = null,
-            ChannelWriter<AnalysisResult>? analysisWriter = null)
+            ChannelWriter<AnalysisResult>? analysisWriter = null,
+            ClientWebSocket? preWarmedWebsocket = null)
         {
             m_mediaStreaming = mediaStreaming;
             m_configuration = configuration;
@@ -78,6 +81,7 @@ namespace CallAutomation.AzureAI.VoiceLive
             m_transcriptionHint = callTranscriptionHint;
             m_transcriptionWriter = transcriptionWriter;
             m_analysisWriter = analysisWriter;
+            m_preWarmedWebsocket = preWarmedWebsocket;
 
             // Use per-call system prompt VERBATIM if provided. The admin-chat backend is the
             // single source of truth for the prompt — we don't append, prepend, or modify.
@@ -107,73 +111,111 @@ namespace CallAutomation.AzureAI.VoiceLive
 
                 m_logger.LogInformation("Connecting to Azure Voice Live: {Endpoint}, model: {Model}", azureVoiceLiveEndpoint, voiceLiveModel);
 
-                var azureVoiceLiveWebsocketUrl = new Uri(
-                    $"{azureVoiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version=2025-10-01&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}");
+                var initStart = DateTime.UtcNow;
 
-                // Try connecting with the cached token first. If we get a 401 (stale token
-                // after container restart / deployment), force-refresh and retry once.
-                const int MaxAttempts = 2;
-                for (int attempt = 1; attempt <= MaxAttempts; attempt++)
+                // Fast path: a pre-warmed (already-connected) WebSocket was handed in.
+                // Skip token acquisition + ConnectAsync entirely — those round-trips
+                // (~300-600ms) already happened during the PSTN dial wait.
+                if (m_preWarmedWebsocket != null && m_preWarmedWebsocket.State == WebSocketState.Open)
                 {
-                    var forceRefresh = attempt > 1;
-                    var tokenContext = forceRefresh
-                        ? new Azure.Core.TokenRequestContext(
-                              scopes: new[] { "https://cognitiveservices.azure.com/.default" },
-                              claims: "{}")   // bypass MSAL cache
-                        : new Azure.Core.TokenRequestContext(
-                              new[] { "https://cognitiveservices.azure.com/.default" });
-
-                    var tokenResult = await m_credential.GetTokenAsync(tokenContext, CancellationToken.None);
-                    m_logger.LogInformation("Token acquired (attempt {Attempt}, forceRefresh: {Force}, expires: {Expiry})",
-                        attempt, forceRefresh, tokenResult.ExpiresOn.ToString("HH:mm:ss"));
-
-                    m_azureVoiceLiveWebsocket = new ClientWebSocket();
-                    m_azureVoiceLiveWebsocket.Options.SetRequestHeader("Authorization", $"Bearer {tokenResult.Token}");
-
-                    try
+                    m_azureVoiceLiveWebsocket = m_preWarmedWebsocket;
+                    m_logger.LogInformation("Using pre-warmed Voice Live WebSocket (skipped token + connect, saved ~300-600ms)");
+                }
+                else
+                {
+                    if (m_preWarmedWebsocket != null)
                     {
-                        m_logger.LogInformation("Connecting to {Url} (attempt {Attempt})...", azureVoiceLiveWebsocketUrl, attempt);
-                        await m_azureVoiceLiveWebsocket.ConnectAsync(azureVoiceLiveWebsocketUrl, CancellationToken.None);
-                        m_logger.LogInformation("Connected successfully on attempt {Attempt}!", attempt);
-                        break; // success — exit retry loop
+                        m_logger.LogWarning("Pre-warmed WebSocket was provided but not Open (state={State}) — falling back to cold connect",
+                            m_preWarmedWebsocket.State);
                     }
-                    catch (WebSocketException ex) when (
-                        attempt < MaxAttempts &&
-                        ex.Message.Contains("401"))
+
+                    var azureVoiceLiveWebsocketUrl = new Uri(
+                        $"{azureVoiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version=2025-10-01&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}");
+
+                    // Try connecting with the cached token first. If we get a 401 (stale token
+                    // after container restart / deployment), force-refresh and retry once.
+                    const int MaxAttempts = 2;
+                    for (int attempt = 1; attempt <= MaxAttempts; attempt++)
                     {
-                        m_logger.LogWarning("WebSocket connect got 401 on attempt {Attempt}, retrying with force-refreshed token...", attempt);
-                        m_azureVoiceLiveWebsocket.Dispose();
-                        continue; // retry with force-refresh
+                        var forceRefresh = attempt > 1;
+                        var tokenContext = forceRefresh
+                            ? new Azure.Core.TokenRequestContext(
+                                  scopes: new[] { "https://cognitiveservices.azure.com/.default" },
+                                  claims: "{}")   // bypass MSAL cache
+                            : new Azure.Core.TokenRequestContext(
+                                  new[] { "https://cognitiveservices.azure.com/.default" });
+
+                        var tokenStart = DateTime.UtcNow;
+                        var tokenResult = await m_credential.GetTokenAsync(tokenContext, CancellationToken.None);
+                        var tokenMs = (DateTime.UtcNow - tokenStart).TotalMilliseconds;
+                        m_logger.LogInformation("Token acquired in {TokenMs:F0}ms (attempt {Attempt}, forceRefresh: {Force}, expires: {Expiry})",
+                            tokenMs, attempt, forceRefresh, tokenResult.ExpiresOn.ToString("HH:mm:ss"));
+
+                        m_azureVoiceLiveWebsocket = new ClientWebSocket();
+                        m_azureVoiceLiveWebsocket.Options.SetRequestHeader("Authorization", $"Bearer {tokenResult.Token}");
+
+                        try
+                        {
+                            m_logger.LogInformation("Connecting to {Url} (attempt {Attempt})...", azureVoiceLiveWebsocketUrl, attempt);
+                            var wsConnectStart = DateTime.UtcNow;
+                            await m_azureVoiceLiveWebsocket.ConnectAsync(azureVoiceLiveWebsocketUrl, CancellationToken.None);
+                            var wsConnectMs = (DateTime.UtcNow - wsConnectStart).TotalMilliseconds;
+                            m_logger.LogInformation("Connected successfully on attempt {Attempt} in {WsConnectMs:F0}ms (total init so far: {TotalMs:F0}ms)",
+                                attempt, wsConnectMs, (DateTime.UtcNow - initStart).TotalMilliseconds);
+                            break; // success — exit retry loop
+                        }
+                        catch (WebSocketException ex) when (
+                            attempt < MaxAttempts &&
+                            ex.Message.Contains("401"))
+                        {
+                            m_logger.LogWarning("WebSocket connect got 401 on attempt {Attempt}, retrying with force-refreshed token...", attempt);
+                            m_azureVoiceLiveWebsocket.Dispose();
+                            continue; // retry with force-refresh
+                        }
                     }
                 }
 
                 // Start listening for messages
                 StartConversation();
 
-                // Initialize conversation analysis service (uses gpt-5.4-nano structured outputs)
-                if (m_analysisWriter != null)
-                {
-                    try
-                    {
-                        var analysisLoggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
-                        var analysisLogger = analysisLoggerFactory.CreateLogger<ConversationAnalysisService>();
-                        m_analysisService = new ConversationAnalysisService(
-                            configuration, analysisLogger, m_credential, m_analysisWriter, m_telemetryClient);
-                        m_logger.LogInformation("Conversation analysis service initialized");
-                    }
-                    catch (Exception analysisEx)
-                    {
-                        m_logger.LogWarning(analysisEx, "Failed to initialize analysis service — analysis will be skipped");
-                    }
-                }
-
                 // Update session with Voice Live settings
+                var sessionUpdateStart = DateTime.UtcNow;
                 await UpdateSessionAsync();
+                var sessionUpdateMs = (DateTime.UtcNow - sessionUpdateStart).TotalMilliseconds;
 
                 // Start response from AI
+                var responseCreateStart = DateTime.UtcNow;
                 await StartResponseAsync();
+                var responseCreateMs = (DateTime.UtcNow - responseCreateStart).TotalMilliseconds;
 
-                m_logger.LogInformation("Voice Live session fully initialized and ready");
+                m_logger.LogInformation(
+                    "Voice Live session fully initialized and ready (sessionUpdate={SessionUpdateMs:F0}ms, responseCreate={ResponseCreateMs:F0}ms)",
+                    sessionUpdateMs, responseCreateMs);
+
+                // Initialize conversation analysis service AFTER the AI greeting has been
+                // requested. The analysis service isn't needed until the first transcript
+                // arrives (many seconds later), so deferring its construction off the hot
+                // path saves ~50-100ms before the AI's first word. Constructing a new
+                // LoggerFactory here is expensive — fire-and-forget on a Task so we don't
+                // block the hot path even if Cosmos/Azure OpenAI clients init slowly.
+                if (m_analysisWriter != null)
+                {
+                    _ = Task.Run(() =>
+                    {
+                        try
+                        {
+                            var analysisLoggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+                            var analysisLogger = analysisLoggerFactory.CreateLogger<ConversationAnalysisService>();
+                            m_analysisService = new ConversationAnalysisService(
+                                configuration, analysisLogger, m_credential, m_analysisWriter, m_telemetryClient);
+                            m_logger.LogInformation("Conversation analysis service initialized (deferred, off hot path)");
+                        }
+                        catch (Exception analysisEx)
+                        {
+                            m_logger.LogWarning(analysisEx, "Failed to initialize analysis service — analysis will be skipped");
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -417,6 +459,7 @@ namespace CallAutomation.AzureAI.VoiceLive
         {
             var jsonObject = new { type = "response.create" };
             var message = JsonSerializer.Serialize(jsonObject, s_compactJson);
+            m_responseCreateSentAt = DateTime.UtcNow;
             await SendMessageAsync(message, CancellationToken.None);
         }
 
@@ -486,6 +529,19 @@ namespace CallAutomation.AzureAI.VoiceLive
                         }
                         else if (msgType == "response.audio.delta")
                         {
+                            // One-shot log: how long from response.create → first audio chunk?
+                            // This is the dominant first-response latency (server-side Voice Live
+                            // generation time). If this is >1.5s, the bottleneck is Voice Live itself.
+                            if (m_responseCreateSentAt.HasValue)
+                            {
+                                var firstAudioMs = (DateTime.UtcNow - m_responseCreateSentAt.Value).TotalMilliseconds;
+                                m_logger.LogInformation("First audio chunk arrived {FirstAudioMs:F0}ms after response.create", firstAudioMs);
+                                m_telemetryClient?.TrackMetric("VoiceLive.FirstAudioMs", firstAudioMs, new Dictionary<string, string>
+                                {
+                                    { "chat.phone_number", m_phoneNumber ?? "" }
+                                });
+                                m_responseCreateSentAt = null;
+                            }
                             var jsonString = OutStreamingData.GetAudioDataForOutbound(
                                 Convert.FromBase64String(data["delta"].ToString()!));
                             await m_mediaStreaming.SendMessageAsync(jsonString);
