@@ -51,16 +51,28 @@ public static class Program
         var instructionsOverride = config["AzureVoiceLive:Instructions"];
         var sharedPrompt = instructionsOverride ?? PersonaStore.GetPrompt(personaId);
 
+        // Voice settings inherited from ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults
+        // (single source of truth, also used by caller-agent). Override per-key in
+        // appsettings.json only when you want the lab to diverge from prod.
+        var voiceType = config["AzureVoiceLive:VoiceType"] ?? VoiceLiveDefaults.DefaultVoiceType;
+        var voiceName = config["AzureVoiceLive:Voice"] ?? VoiceLiveDefaults.DefaultVoiceName;
+
+        // Temperature: optional in JSON. Auto-default from shared ONLY if voice is HD
+        // (standard neural silently ignores it but the docs warn against unsupported fields).
+        float? temperature = null;
+        var tempStr = config["AzureVoiceLive:Temperature"];
+        if (!string.IsNullOrWhiteSpace(tempStr) && float.TryParse(tempStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var t))
+            temperature = t;
+        else if (VoiceLiveDefaults.IsHdVoice(voiceName))
+            temperature = (float)VoiceLiveDefaults.DefaultVoiceTemperature;
+
         var settings = new LabSettings
         {
             Endpoint = config["AzureVoiceLive:Endpoint"] ?? "https://cog-contactcenteragent.cognitiveservices.azure.com/",
             Model = config["AzureVoiceLive:Model"] ?? VoiceLiveDefaults.Model,
-            // Voice families:
-            //   VoiceType="openai"          → OpenAI voices: ash, marin, alloy, verse, coral, echo, sage, shimmer, ballad
-            //   VoiceType="azure-standard"  → native Azure neural voices, e.g. da-DK-ChristelMultilingualNeural,
-            //                                 da-DK-ChristelNeural, da-DK-JeppeNeural
-            VoiceType = config["AzureVoiceLive:VoiceType"] ?? VoiceLiveDefaults.DefaultVoiceType,
-            Voice = config["AzureVoiceLive:Voice"] ?? VoiceLiveDefaults.DefaultVoiceName,
+            VoiceType = voiceType,
+            Voice = voiceName,
+            Temperature = temperature,
             Instructions = sharedPrompt,
             MicDevice = 0,
         };
@@ -113,7 +125,7 @@ public static class Program
             Instructions = s.Instructions,
             Voice = s.VoiceType switch
             {
-                "azure-standard" => new AzureStandardVoice(s.Voice),
+                "azure-standard" => BuildAzureStandardVoice(s.Voice, s.Temperature),
                 _ => new OpenAIVoice(new OAIVoice(s.Voice)),
             },
             InputAudioFormat = InputAudioFormat.Pcm16,
@@ -255,9 +267,15 @@ public static class Program
         Console.WriteLine("┌────────────────────────────────────────────────────────────┐");
         Console.WriteLine("│  Danish Voice Lab — local speech-to-speech sandbox         │");
         Console.WriteLine("└────────────────────────────────────────────────────────────┘");
-        Console.WriteLine($"  Endpoint : {s.Endpoint}");
-        Console.WriteLine($"  Model    : {s.Model}");
-        Console.WriteLine($"  Voice    : {s.Voice}  (OpenAI voice)");
+        Console.WriteLine($"  Endpoint    : {s.Endpoint}");
+        Console.WriteLine($"  Model       : {s.Model}");
+        var voiceFlavor = s.Voice.Contains(":DragonHDOmni", StringComparison.OrdinalIgnoreCase) ? "HD Omni"
+                         : s.Voice.Contains(":DragonHD", StringComparison.OrdinalIgnoreCase) ? "HD"
+                         : s.VoiceType == "openai" ? "OpenAI"
+                         : "Azure standard neural";
+        Console.WriteLine($"  Voice       : {s.Voice}  ({voiceFlavor})");
+        if (s.Temperature.HasValue)
+            Console.WriteLine($"  Temperature : {s.Temperature.Value} (HD/HD Omni only — ignored on standard neural)");
         Console.WriteLine();
     }
 
@@ -270,6 +288,28 @@ public static class Program
             Console.WriteLine($"    [{i}] {caps.ProductName}");
         }
         Console.WriteLine("  (set AzureVoiceLive:MicDevice in appsettings.json to choose)");
+    }
+
+    /// <summary>
+    /// Build the AzureStandardVoice payload. The same SDK type carries both standard
+    /// neural voices (e.g. da-DK-ChristelNeural) and HD Omni voices
+    /// (e.g. da-DK-Christel:DragonHDOmniLatestNeural) — Voice Live keys off the
+    /// ":DragonHDOmniLatestNeural" suffix in the name. Temperature only has effect
+    /// on HD voices; on standard neural the server silently ignores it.
+    ///
+    /// Locale is ENFORCED via VoiceLiveDefaults.DefaultVoiceLocale (da-DK) so the
+    /// voice can't drift toward a generic Scandinavian / Swedish accent on English
+    /// loanwords. Without it, da-DK voices fall back to default-accent behaviour
+    /// based on text content.
+    /// </summary>
+    private static AzureStandardVoice BuildAzureStandardVoice(string name, float? temperature)
+    {
+        var voice = new AzureStandardVoice(name)
+        {
+            Locale = VoiceLiveDefaults.DefaultVoiceLocale,
+        };
+        if (temperature.HasValue) voice.Temperature = temperature.Value;
+        return voice;
     }
 
     /// <summary>
@@ -410,6 +450,8 @@ public sealed class LabSettings
     public required string Model { get; init; }
     public required string VoiceType { get; init; }
     public required string Voice { get; init; }
+    /// <summary>HD/HD Omni temperature (0.0–1.0). Null = omit from payload.</summary>
+    public float? Temperature { get; init; }
     public required string Instructions { get; init; }
     public int MicDevice { get; set; }
 }

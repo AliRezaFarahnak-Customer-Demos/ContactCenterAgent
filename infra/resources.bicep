@@ -509,6 +509,24 @@ resource callerAgentApp 'Microsoft.App/containerApps@2025-07-01' = {
               name: 'AcsPhoneNumber'
               value: acsPhoneNumber
             }
+            // ─── Voice (TTS) ──────────────────────────────────────────────
+            // Pin the TTS locale at the deployment layer so the production
+            // container always sends `locale: "da-DK"` on the wire regardless
+            // of any appsettings.json drift. Without this enforced, da-DK
+            // voices have been observed drifting toward a generic Scandinavian
+            // / Swedish accent on English loanwords, brand names, and digit
+            // sequences common in Norlys calls.
+            //
+            // The voice NAME is left to appsettings.json (currently
+            // `da-DK-ChristelNeural`, will inherit HD Omni from
+            // VoiceLiveDefaults once that override is removed). To override
+            // name/type/temperature here too, add Voice__Name / Voice__Type /
+            // Voice__Temperature env vars — but env vars override appsettings,
+            // so be deliberate.
+            {
+              name: 'Voice__Locale'
+              value: 'da-DK'
+            }
           ]
         }
       ]

@@ -318,14 +318,16 @@ namespace CallAutomation.AzureAI.VoiceLive
 
         /// <summary>
         /// Build the voice configuration object from appsettings.
-        /// Supports: azure-standard, azure-custom, openai.
-        /// Uses Dictionary to avoid sending empty optional properties to the API.
+        /// Supports: azure-standard (incl. HD Omni), azure-custom, openai.
+        /// Defaults from ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults so
+        /// caller-agent and danish-voice-lab inherit the same voice/temperature
+        /// without duplicate constants.
         /// </summary>
         private static Dictionary<string, object> BuildVoiceConfig(IConfiguration configuration, ILogger logger)
         {
-            var voiceType = configuration.GetValue<string>("Voice:Type") ?? "openai";
-            var voiceName = configuration.GetValue<string>("Voice:Name") ?? "ash";
-            var voiceTemp = configuration.GetValue<double>("Voice:Temperature", 0.8);
+            var voiceType = configuration.GetValue<string>("Voice:Type") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceType;
+            var voiceName = configuration.GetValue<string>("Voice:Name") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceName;
+            var voiceTemp = configuration.GetValue<double>("Voice:Temperature", ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceTemperature);
             var voiceEndpointId = configuration.GetValue<string>("Voice:EndpointId");
 
             var voice = new Dictionary<string, object>
@@ -350,14 +352,29 @@ namespace CallAutomation.AzureAI.VoiceLive
                     break;
 
                 default: // azure-standard
-                    // Console app uses bare AzureStandardVoice(name) — no temperature.
-                    // Sending an unsupported field can cause the server to silently
-                    // fall back to the default voice. Keep parity with console.
+                    // Send temperature ONLY for HD / HD Omni voices (name contains ":DragonHD").
+                    // Standard neural voices reject/ignore it; the docs warn unsupported fields
+                    // can cause silent fallback to a default voice. Mirrors danish-voice-lab
+                    // (BuildAzureStandardVoice helper).
                     voice["type"] = "azure-standard";
+                    if (ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.IsHdVoice(voiceName))
+                        voice["temperature"] = voiceTemp;
+
+                    // ENFORCE locale so the voice can't drift toward a generic
+                    // Scandinavian / Swedish accent on English loanwords or digits.
+                    // Override via Voice:Locale in appsettings.json (set to empty
+                    // string to opt out entirely).
+                    var voiceLocale = configuration.GetValue<string>("Voice:Locale")
+                        ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceLocale;
+                    if (!string.IsNullOrWhiteSpace(voiceLocale))
+                        voice["locale"] = voiceLocale;
                     break;
             }
 
-            logger.LogInformation("Voice config: type={Type}, name={Name}", voiceType, voiceName);
+            logger.LogInformation("Voice config: type={Type}, name={Name}, locale={Locale}, temperature={Temp}",
+                voiceType, voiceName,
+                voice.ContainsKey("locale") ? voice["locale"] : (object)"(omitted)",
+                voice.ContainsKey("temperature") ? voice["temperature"] : (object)"(omitted)");
 
             return voice;
         }

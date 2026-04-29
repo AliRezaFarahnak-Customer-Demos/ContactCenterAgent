@@ -122,3 +122,78 @@ Last working revision before removal: check `git log -- code/admin-chat/agent/Ad
 ## Memory
 
 Use `/memories/repo/` for repo-scoped facts you've verified from source this session and want to remember. Update or remove entries that turn out to be stale. Don't write code-level snapshots into this file — keep them in source where they live.
+
+---
+
+## Voice quality — HD Omni reference (current direction)
+
+We are migrating from `da-DK-ChristelNeural` (standard neural) to **Dragon HD Omni** for richer Danish prosody. Test in `danish-voice-lab/` first, then promote to caller-agent.
+
+**Reference links (read these first, don't trust this doc's snapshot):**
+
+- Dragon HD Omni voice catalog (700+ voices, source of truth): https://github.com/Azure-Samples/Cognitive-Speech-TTS/blob/master/Blog-Samples/Introducing-Dragon-HD-Omni/dragonhdomni_voice_list.json
+- Voice Live "How to" (HD voice payload examples, region list): https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to
+- Voice Live API reference 2025-10-01 (`RealtimeAzureStandardVoice` schema): https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2025-10-01
+- HD voices article (regions, supported voices): https://learn.microsoft.com/en-us/azure/ai-services/speech-service/high-definition-voices
+
+**Confirmed Danish HD Omni voices** (verified in catalog JSON above):
+
+- `da-DK-Christel:DragonHDOmniLatestNeural` — F Adult, polished/professional (news/corporate)
+- `da-DK-Jeppe:DragonHDOmniLatestNeural` — M Young Adult, smooth/authoritative
+
+There is **no Danish voice in the non-Omni DragonHD set** — Omni is the only HD path for `da-DK`. Standard neural multilingual variants (`*MultilingualNeural`) are also rejected by Voice Live `azure-standard`.
+
+**Region requirement:** HD voices only run in `southeastasia, centralindia, swedencentral, westeurope, eastus, eastus2, westus2`. Our resource is in **Sweden Central** ✓.
+
+**How to wire it (Voice Live JSON / SDK):**
+
+```json
+"voice": {
+  "type": "azure-standard",
+  "name": "da-DK-Christel:DragonHDOmniLatestNeural",
+  "temperature": 0.7
+}
+```
+
+The `:DragonHDOmniLatestNeural` suffix on the `name` is what flips the server into HD mode — `type` stays `azure-standard`. The `Azure.AI.VoiceLive` SDK 1.0.0 surfaces this via `new AzureStandardVoice(name) { Temperature = 0.7f }`. Same `AzureStandardVoice` class carries both standard neural and HD Omni — only the name string differs.
+
+**What you can tune through Voice Live (vs. raw Speech SDK):**
+
+- ✅ `temperature` (0.0–1.0) — only meaningful on HD/HD Omni; silently ignored on standard neural. 0.7 = calm customer service; 0.8 = more variation.
+- ✅ `rate` (0.5–1.5 string) — works on both standard and HD.
+- ✅ `pitch`, `volume`, `style`, `locale`, `prefer_locales`, `custom_lexicon_url` — all on `RealtimeAzureStandardVoice`.
+- ❌ `top_p` / `top_k` / `cfg_scale` — these are HD Omni `parameters=` SSML attributes for direct Speech SDK use. **Not exposed through Voice Live JSON.**
+- ❌ `mstts:express-as` styles (cheerful, empathetic, etc.) — HD Omni styles are **English-only**. Danish gets default delivery.
+- ✅ Paralinguistic tokens (`[sighing]`, `[laughter]`, `[breathing]`) — work in all languages, including Danish. Probably inappropriate for Norlys customer service.
+- ⚠️ The `instructions` system prompt only weakly steers Azure-voice prosody (per docs: _"may not apply to Azure voices"_). HD Omni's automatic prosody prediction does the heavy lifting; pacing should come from punctuation in model output.
+
+**PSTN ceiling still applies on output.** HD's quality gain is full-bandwidth on a laptop speaker but compressed through G.711 0.3–3.4 kHz on a phone call. The benefit on PSTN is mostly _prosody/intonation/pause naturalness_, not raw fidelity. Test in `danish-voice-lab/` with headphones to hear the full upside; expect a smaller (but still real) win on actual ACS calls.
+
+**Where it lives in our code:**
+
+- `code/shared/ContactCenterAgent.Shared/VoiceLive/VoiceLiveDefaults.cs` — single source of truth for `DefaultVoiceName` (= `da-DK-Christel:DragonHDOmniLatestNeural`), `DefaultVoiceTemperature` (= 0.7), and the `IsHdVoice(name)` helper that gates the `temperature` field on the wire payload.
+- `danish-voice-lab/appsettings.json` — minimal: only Endpoint / Model / PersonaId / MicDevice. Voice/temperature inherited from shared. Override `Voice` here to A/B test without touching prod.
+- `danish-voice-lab/Program.cs` — reads voice/temperature with shared defaults; auto-applies `DefaultVoiceTemperature` when voice is HD and no override given. `BuildAzureStandardVoice(name, temperature?)` constructs the typed SDK payload (Temperature property only set when non-null).
+- `code/caller-agent/agent/AzureVoiceLiveService.cs` `BuildVoiceConfig` — defaults from shared; sends `temperature` on `azure-standard` ONLY when `IsHdVoice(name)` returns true (so standard neural never gets an unexpected field that could trigger silent fallback).
+- `code/caller-agent/agent/appsettings.json` — explicit override holds prod on `da-DK-ChristelNeural` until lab validation completes. **To promote HD Omni to prod: delete the `Voice.Type` / `Voice.Name` / `Voice.Temperature` lines** and prod will inherit shared defaults. Redeploy with `azd deploy caller-agent`.
+
+**Verification after any voice swap:** App Insights `Session accepted by server` trace must echo the exact voice name in the `session.updated.voice` block. If it shows the default voice instead of what you sent → silent fallback (unsupported field or wrong region).
+
+---
+
+## Deferred Voice Live customizations (not yet wired)
+
+Audited against the [official Voice Live customization docs](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to-customize) — these official options are NOT in the codebase yet. Listed in order of ROI for Norlys / Danish PSTN. Pick up when there's a complaint that maps to one of them.
+
+1. **`custom_lexicon_url`** on `voice` block (TTS pronunciation control) — host an SSML-format lexicon XML at a public URL, point `RealtimeAzureStandardVoice.custom_lexicon_url` at it. Use case: force correct pronunciation of "Norlys", Danish street-name suffixes (-vej, -gade, -allé), postal-code patterns, common foreign brand names. Lower effort than Custom Voice; biggest fix for branded mispronunciations on PSTN. Same lexicon works for both standard neural and HD Omni. Docs: [custom lexicon for text to speech](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-pronunciation#custom-lexicon).
+2. **`prefer_locales: ["da-DK", "en-US"]`** on `voice` block — when Christel emits an embedded English word inside a Danish sentence (brand name, technical term), this pins the _secondary_ English accent to American. Without it the accent on the foreign word is unpredictable. One-line addition to `BuildVoiceConfig` / `BuildAzureStandardVoice`; pair with a new `Voice:PreferLocales` config key.
+3. **Custom Speech model** trained on real Norlys call recordings — wire via `input_audio_transcription.custom_speech: { "da-DK": "<modelId>" }` (per the customize doc). The ONLY meaningful upgrade for PSTN STT quality (the G.711 narrowband ceiling can't be undone by phrase_list or model swap). Multi-week project: collect ≥10h of real call audio with consent, train in Speech Studio on the SAME AI Foundry resource we use for Voice Live (cross-resource = must copy model first), pay separately for training + hosting. Docs: [What is custom speech?](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/custom-speech-overview).
+4. **`rate: "1.05"`** on `voice` block — small speed bump to reduce perceived hesitation between AI sentences if testers feel Christel sounds slow. Trivial; taste-dependent. Range 0.5–1.5 (string).
+5. **Parallel admin-UI Azure Speech recognizer** — separate `da-DK` recognizer on the same audio, ONLY for the displayed transcript in admin-chat. Doesn't change what the gpt-realtime model "hears" (Voice Live STT stays in place for the model). Sketched in `app-architecture-dependencies.agent.md`. Cheaper than Custom Speech if all you need is a more readable live transcript.
+
+Things deliberately NOT pursued (would hurt or are unsupported for `da-DK`):
+
+- `mstts:express-as` styles (cheerful/empathetic/etc.) — HD Omni styles are English-only.
+- `remove_filler_words` — English-only feature.
+- `gender` / `age` / `description` from the Dragon HD Omni catalog JSON — those are catalog metadata, NOT wire fields. Sending them risks silent fallback.
+- Sending `temperature` on standard neural voices — already gated by `IsHdVoice()` because docs warn unsupported fields can trigger silent fallback.
