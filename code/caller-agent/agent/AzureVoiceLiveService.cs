@@ -38,13 +38,16 @@ namespace CallAutomation.AzureAI.VoiceLive
         private Func<string, Task>? m_onHangUp;
         private bool m_pendingHangUp;
         private string? m_pendingHangUpReason;
-        // Greeting protection: send turn_detection.interrupt_response=false on the initial
-        // session.update so the SERVER cannot auto-cancel TTS during the opening line
-        // (PSTN pickup noise, an early "hi"). After the first response.done we resend
-        // session.update with interrupt_response=true to restore normal barge-in.
-        // Verified accepted by Voice Live in danish-voice-lab.
-        // Disable via env var VoiceLive__ProtectFirstResponse=false if it ever misbehaves.
+        // Greeting protection state. Tracks bytes of greeting audio sent so we can
+        // wait for the phone to finish PLAYING before flipping protection off.
+        // response.done fires when the server is done generating (faster than realtime),
+        // not when ACS has finished playing audio over PSTN.
         private bool m_greetingInFlight = true;
+        private long m_greetingAudioBytesSent;
+        // ACS outbound audio: 16-bit PCM mono @ 16 kHz → 32000 bytes per second.
+        // (Voice Live sends 24 kHz pcm16 but OutStreamingData.GetAudioDataForOutbound
+        // resamples to ACS's 16 kHz expectation.)
+        private const int OutboundBytesPerSecond = 16000 * 2;
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
         private readonly IConfiguration m_configuration;
@@ -504,8 +507,12 @@ namespace CallAutomation.AzureAI.VoiceLive
                         }
                         else if (msgType == "response.audio.delta")
                         {
-                            var jsonString = OutStreamingData.GetAudioDataForOutbound(
-                                Convert.FromBase64String(data["delta"].ToString()!));
+                            var audioBytes = Convert.FromBase64String(data["delta"].ToString()!);
+                            if (m_greetingInFlight)
+                            {
+                                m_greetingAudioBytesSent += audioBytes.Length;
+                            }
+                            var jsonString = OutStreamingData.GetAudioDataForOutbound(audioBytes);
                             await m_mediaStreaming.SendMessageAsync(jsonString);
                         }
                         else if (msgType == "input_audio_buffer.speech_started")
@@ -653,9 +660,36 @@ namespace CallAutomation.AzureAI.VoiceLive
                             }
                             if (m_greetingInFlight)
                             {
-                                m_greetingInFlight = false;
-                                m_logger.LogInformation("Greeting complete — re-enabling server-side barge-in");
-                                await UpdateSessionAsync();
+                                // response.done fires when the SERVER finishes generating audio,
+                                // which is much faster than realtime. The phone is still playing
+                                // the buffered audio. Wait for the playback to actually finish
+                                // before disabling greeting protection — otherwise an early "hi"
+                                // 1-2s into the greeting still kills it.
+                                //
+                                // Voice Live source audio is 24 kHz pcm16 = 48000 bytes/sec.
+                                // Add a small safety tail (300 ms) for ACS RTP jitter buffer.
+                                const int VoiceLiveBytesPerSecond = 24000 * 2;
+                                const int SafetyTailMs = 300;
+                                var bytesSnapshot = m_greetingAudioBytesSent;
+                                var playbackMs = (int)(bytesSnapshot * 1000L / VoiceLiveBytesPerSecond) + SafetyTailMs;
+                                m_logger.LogInformation(
+                                    "Greeting response.done; holding protection {DelayMs}ms while {Bytes} bytes finish playing",
+                                    playbackMs, bytesSnapshot);
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        await Task.Delay(playbackMs);
+                                        m_greetingInFlight = false;
+                                        m_logger.LogInformation("Greeting playback estimated complete — re-enabling server-side barge-in");
+                                        await UpdateSessionAsync();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        m_logger.LogWarning(ex, "Failed to re-enable barge-in after greeting");
+                                        m_greetingInFlight = false;
+                                    }
+                                });
                             }
                             m_logger.LogInformation("Model turn finished");
                         }
