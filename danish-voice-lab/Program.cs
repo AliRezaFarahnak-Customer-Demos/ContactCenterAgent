@@ -1,7 +1,8 @@
-using System.Text.Json;
 using System.Threading.Channels;
 using Azure.AI.VoiceLive;
 using Azure.Identity;
+using ContactCenterAgent.Shared.Personas;
+using ContactCenterAgent.Shared.VoiceLive;
 using Microsoft.Extensions.Configuration;
 using NAudio.Wave;
 
@@ -48,18 +49,18 @@ public static class Program
         // override entirely with AzureVoiceLive:Instructions in appsettings.
         var personaId = config["AzureVoiceLive:PersonaId"] ?? "onboarding";
         var instructionsOverride = config["AzureVoiceLive:Instructions"];
-        var sharedPrompt = instructionsOverride ?? LoadPersonaPrompt(personaId);
+        var sharedPrompt = instructionsOverride ?? PersonaStore.GetPrompt(personaId);
 
         var settings = new LabSettings
         {
             Endpoint = config["AzureVoiceLive:Endpoint"] ?? "https://cog-contactcenteragent.cognitiveservices.azure.com/",
-            Model = config["AzureVoiceLive:Model"] ?? "gpt-realtime",
+            Model = config["AzureVoiceLive:Model"] ?? VoiceLiveDefaults.Model,
             // Voice families:
             //   VoiceType="openai"          → OpenAI voices: ash, marin, alloy, verse, coral, echo, sage, shimmer, ballad
             //   VoiceType="azure-standard"  → native Azure neural voices, e.g. da-DK-ChristelMultilingualNeural,
             //                                 da-DK-ChristelNeural, da-DK-JeppeNeural
-            VoiceType = config["AzureVoiceLive:VoiceType"] ?? "openai",
-            Voice = config["AzureVoiceLive:Voice"] ?? "ash",
+            VoiceType = config["AzureVoiceLive:VoiceType"] ?? VoiceLiveDefaults.DefaultVoiceType,
+            Voice = config["AzureVoiceLive:Voice"] ?? VoiceLiveDefaults.DefaultVoiceName,
             Instructions = sharedPrompt,
             MicDevice = 0,
         };
@@ -125,85 +126,12 @@ public static class Program
             // PhraseList biases recognition toward Norlys-specific vocabulary
             // (billing, onboarding, energy domain). Add real customer/product
             // names here as you discover them in the transcripts.
-            InputAudioTranscription = new AudioInputTranscriptionOptions(AudioInputTranscriptionOptionsModel.AzureSpeech)
-            {
-                Language = "da-DK",
-                PhraseList =
-                {
-                    // ── Brand & subsidiaries ──────────────────────
-                    "Norlys", "Norlys Energi", "Norlys Tele", "Stofa",
-                    "Norlys Erhverv", "Norlys Privat", "Andel", "OK", "Ørsted",
-                    "EWII", "SEAS-NVE", "NRGi", "Verdo", "Nordlys",
-
-                    // ── Billing & payments ────────────────────────
-                    "regning", "faktura", "fakturanummer", "betaling", "betalingsservice",
-                    "PBS", "BetalingsService", "rykker", "rykkergebyr", "girokort",
-                    "MobilePay", "MitID", "NemID", "NemKonto", "abonnement",
-                    "opkrævning", "afregning", "acontobeløb", "aconto", "årsopgørelse",
-                    "depositum", "rentenota", "kreditnota", "tilgodehavende",
-                    "restance", "inkasso", "afdragsordning", "betalingsaftale",
-                    "moms", "afgift", "elafgift", "PSO-afgift", "transportbetaling",
-                    "nettarif", "abonnementsgebyr", "oprettelsesgebyr",
-                    "forbrug", "forbrugsafregning", "merforbrug", "tilbagebetaling",
-                    "kreditering", "saldo", "overforbrug", "underforbrug",
-
-                    // ── Onboarding, contracts & moving ───────────────────
-                    "onboarding", "tilmelding", "oprettelse", "kontrakt",
-                    "el-aftale", "elaftale", "gasaftale", "varmeaftale",
-                    "fjernvarme", "naturgas", "biogas",
-                    "bindingsperiode", "opsigelse", "opsigelsesvarsel",
-                    "fortrydelsesret", "leverandørskifte", "skift af elselskab",
-                    "flytning", "tilflytning", "fraflytning", "flyttemeddelelse",
-                    "flyttedato", "overtagelsesdato",
-                    "måleraflæsning", "selvaflæsning", "målernummer", "aftagernummer",
-                    "målerstand", "fjernaflæst måler", "elmåler", "varmemåler",
-                    "installationsadresse", "aftagepunkt", "EAN-nummer",
-
-                    // ── Products & tariffs ────────────────────────
-                    "fastpris", "variabel pris", "spotpris", "timepris",
-                    "grøn strøm", "vindenergi", "solcelle", "klimaaftale",
-                    "Energi Plus", "Energi Basis", "Trumf",
-                    "fiber", "fiberbredbånd", "bredbånd", "internet",
-                    "TV-pakke", "tv-pakke", "streaming", "Stofa WebTV",
-                    "mobilabonnement", "mobil", "fastnet", "telefoni",
-                    "router", "modem", "wifi", "hastighed",
-                    "hovedmåler", "bimåler", "ladestander", "elbil",
-
-                    // ── Customer & identity ───────────────────────
-                    "kundenummer", "CPR-nummer", "CVR-nummer", "kontonummer",
-                    "adresse", "postnummer", "vejnavn", "husnummer",
-                    "lejlighed", "etage", "telefonnummer", "mobilnummer",
-                    "e-mail", "mailadresse",
-
-                    // ── Common service phrases ────────────────────
-                    "kundeservice", "support", "teknisk support", "fejlmelding",
-                    "afbrydelse", "strømsvigt", "nedbrud", "driftforstyrrelse",
-                    "reklamation", "klage", "ankenævn", "Energiklagenævnet",
-                    "selvbetjening", "Mit Norlys", "app", "login",
-                    "kodeord", "nulstil adgangskode",
-                    "samtykke", "GDPR", "persondata", "tavshedspligt",
-
-                    // ── Greetings, frequent words misheard by ASR ─────────
-                    "godmorgen", "goddag", "godaften", "farvel", "tak",
-                    "ja tak", "nej tak", "et øjeblik", "vent venligst",
-                    "har du tid", "kan du hjælpe", "jeg vil gerne",
-                    "hvad koster det", "hvornår", "hvor lang tid",
-
-                    // ── Numbers spelled out (Danish often misheard) ───────
-                    "halvtreds", "tres", "halvfjerds", "firs", "halvfems",
-                    "hundrede", "tusinde",
-
-                    // ── Months & weekdays ────────────────────────
-                    "januar", "februar", "marts", "april", "maj", "juni",
-                    "juli", "august", "september", "oktober", "november", "december",
-                    "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"
-                }
-            },
+            InputAudioTranscription = BuildTranscriptionOptions(),
             TurnDetection = new AzureSemanticVadTurnDetection
             {
-                Threshold = 0.3f,
-                PrefixPadding = TimeSpan.FromMilliseconds(300),
-                SilenceDuration = TimeSpan.FromMilliseconds(500)
+                Threshold = (float)VoiceLiveDefaults.VadThreshold,
+                PrefixPadding = TimeSpan.FromMilliseconds(VoiceLiveDefaults.VadPrefixPaddingMs),
+                SilenceDuration = TimeSpan.FromMilliseconds(VoiceLiveDefaults.VadSilenceDurationMs)
             }
         };
         opts.Modalities.Clear();
@@ -341,40 +269,18 @@ public static class Program
     }
 
     /// <summary>
-    /// Loads the prompt for the named persona from the SHARED personas.json
-    /// (copied to output by the csproj). Throws if the persona id is unknown
-    /// so a typo doesn't silently fall back to a stale default.
+    /// Build the Voice Live transcription options using the shared Norlys phrase list.
+    /// Production STT is azure-speech (da-DK) — same on PSTN.
     /// </summary>
-    private static string LoadPersonaPrompt(string personaId)
+    private static AudioInputTranscriptionOptions BuildTranscriptionOptions()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "personas.json");
-        if (!File.Exists(path))
-            throw new FileNotFoundException(
-                $"Shared personas.json not found at '{path}'. Check DanishVoiceLab.csproj <Content Include>.");
-
-        using var stream = File.OpenRead(path);
-        using var doc = JsonDocument.Parse(stream, new JsonDocumentOptions
+        var opts = new AudioInputTranscriptionOptions(AudioInputTranscriptionOptionsModel.AzureSpeech)
         {
-            // Tolerate trailing commas and comments in case someone hand-edits.
-            AllowTrailingCommas = true,
-            CommentHandling = JsonCommentHandling.Skip,
-        });
-        foreach (var p in doc.RootElement.EnumerateArray())
-        {
-            if (p.TryGetProperty("id", out var idEl) &&
-                string.Equals(idEl.GetString(), personaId, StringComparison.OrdinalIgnoreCase))
-            {
-                return p.GetProperty("prompt").GetString()
-                    ?? throw new InvalidOperationException($"Persona '{personaId}' has no prompt.");
-            }
-        }
-
-        var ids = string.Join(", ",
-            doc.RootElement.EnumerateArray()
-                .Select(e => e.TryGetProperty("id", out var i) ? i.GetString() : null)
-                .Where(s => s is not null));
-        throw new InvalidOperationException(
-            $"Persona '{personaId}' not found in personas.json. Available: {ids}");
+            Language = VoiceLiveDefaults.TranscriptionLanguage,
+        };
+        foreach (var phrase in NorlysDanishPhrases.All)
+            opts.PhraseList.Add(phrase);
+        return opts;
     }
 
     private static bool AudioSelfTest()

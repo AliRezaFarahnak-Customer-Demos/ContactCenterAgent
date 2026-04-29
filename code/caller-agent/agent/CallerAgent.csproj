@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\shared\ContactCenterAgent.Shared\ContactCenterAgent.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Azure.AI.VoiceLive" Version="1.0.0" />
     <PackageReference Include="Azure.Communication.CallAutomation" Version="1.5.1" />
     <PackageReference Include="Azure.Communication.Common" Version="1.4.0" />

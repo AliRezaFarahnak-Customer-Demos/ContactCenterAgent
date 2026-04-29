@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ContactCenterAgent.Shared</RootNamespace>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Single source of truth for personas. Linked from repo root so danish-voice-lab,
+         caller-agent, and admin-chat all consume the same file. Copies to consumer
+         project bin/ folders via this transitive content reference. -->
+    <Content Include="..\..\..\personas.json" Link="personas.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Pack>false</Pack>
+    </Content>
+  </ItemGroup>
+
+</Project>

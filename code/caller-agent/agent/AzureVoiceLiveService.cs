@@ -210,12 +210,12 @@ namespace CallAutomation.AzureAI.VoiceLive
             // differently from the console sandbox the user has tuned by ear.
             // All knobs live under "VoiceLive:Vad" in appsettings.json.
             // ---------------------------------------------------------------------
-            var vadType = m_configuration.GetValue<string>("VoiceLive:Vad:Type") ?? "azure_semantic_vad";
-            var vadThreshold = m_configuration.GetValue<double>("VoiceLive:Vad:Threshold", 0.3);
-            var vadPrefixPaddingMs = m_configuration.GetValue<int>("VoiceLive:Vad:PrefixPaddingMs", 300);
+            var vadType = m_configuration.GetValue<string>("VoiceLive:Vad:Type") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.VadType;
+            var vadThreshold = m_configuration.GetValue<double>("VoiceLive:Vad:Threshold", ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.VadThreshold);
+            var vadPrefixPaddingMs = m_configuration.GetValue<int>("VoiceLive:Vad:PrefixPaddingMs", ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.VadPrefixPaddingMs);
             var vadSilenceMs = m_configuration.GetValue<int>(
                 isEnglish ? "VoiceLive:Vad:SilenceDurationMsEnglish" : "VoiceLive:Vad:SilenceDurationMsOther",
-                500);
+                ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.VadSilenceDurationMs);
 
             m_logger.LogInformation(
                 "VAD config: type={Type}, threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, language={Lang}",
@@ -378,11 +378,14 @@ namespace CallAutomation.AzureAI.VoiceLive
 
             if (isAzureSpeech)
             {
+                // Config wins; otherwise fall back to the shared Norlys phrase list so caller-agent
+                // and danish-voice-lab always send the same vocabulary boost to STT.
                 var phrases = configuration.GetSection("Transcription:PhraseList").Get<string[]>();
-                if (phrases is { Length: > 0 })
+                if (phrases is null || phrases.Length == 0)
                 {
-                    config["phrase_list"] = phrases;
+                    phrases = ContactCenterAgent.Shared.VoiceLive.NorlysDanishPhrases.All.ToArray();
                 }
+                config["phrase_list"] = phrases;
             }
             else
             {

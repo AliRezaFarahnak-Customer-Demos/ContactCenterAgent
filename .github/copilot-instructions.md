@@ -10,13 +10,14 @@ Voice Live reference code: https://github.com/microsoft-foundry/voicelive-sample
 
 This file deliberately contains **no code-level facts** (file lists, package versions, prompts, model names, voice configs, VAD numbers). Those drift. Discover the current state from the source instead — every time:
 
-1. **Project layout** — `list_dir` the repo root, then drill into the folder relevant to the task. Top-level shape is `code/{admin-chat,caller-agent,console-demo-voicelive,speech-tool}/`, `danish-voice-lab/`, `infra/`, `scripts/`, `azure.yaml`.
-2. **Voice / STT / VAD / voice prompt** — read `code/caller-agent/agent/appsettings.json` and `code/caller-agent/agent/AzureVoiceLiveService.cs` (look for `CorePhoneRules`, `BuildTranscriptionConfig`, `BuildVoiceConfig`, `UpdateSessionAsync`).
-3. **Per-call prompt + MFA flow** — read `code/admin-chat/server/api/place-call.post.ts` (system prompt is built here, then sent to caller-agent which appends `CorePhoneRules`).
-4. **Sandboxes** — `danish-voice-lab/Program.cs` is the laptop-mic Danish sandbox the user has tuned by ear; production caller-agent should mirror its wire payload. `code/console-demo-voicelive/` is an older sandbox, not used in production.
-5. **Models / deployments / SKUs / regions** — read `infra/resources.bicep` (Bicep is the source of truth, not docs).
-6. **NuGet versions / target framework** — read the relevant `*.csproj`. Don't trust any version numbers cached in markdown.
-7. **Known traps for a current task** — `grep_search` for the topic in `.github/agents/*.agent.md` (those *can* go stale too — verify against source before quoting).
+1. **Project layout** — `list_dir` the repo root, then drill into the folder relevant to the task. Top-level shape is `code/{admin-chat,caller-agent,speech-tool,shared}/`, `danish-voice-lab/`, `infra/`, `scripts/`, `azure.yaml`. `personas.json` at repo root is the one source of truth for persona prompts.
+2. **Shared library** — `code/shared/ContactCenterAgent.Shared/` is referenced by both `caller-agent` and `danish-voice-lab`. Owns: `Personas/PersonaStore.cs` (loads `personas.json`), `VoiceLive/NorlysDanishPhrases.cs` (Danish STT phrase_list), `VoiceLive/VoiceLiveDefaults.cs` (VAD numbers, model name, voice name, sample rate). Change here once → both surfaces pick it up. Never re-inline these in a consumer.
+3. **Voice / STT / VAD / voice prompt** — read `code/caller-agent/agent/appsettings.json` and `code/caller-agent/agent/AzureVoiceLiveService.cs` (look for `BuildTranscriptionConfig`, `BuildVoiceConfig`, `UpdateSessionAsync`). Defaults come from `VoiceLiveDefaults`; appsettings only holds overrides.
+4. **Per-call prompt + MFA flow** — read `code/admin-chat/server/api/place-call.post.ts` (system prompt is built here, then sent to caller-agent verbatim).
+5. **Sandboxes** — `danish-voice-lab/Program.cs` is the laptop-mic Danish sandbox the user has tuned by ear; production caller-agent should mirror its wire payload (uses the same `ContactCenterAgent.Shared` defaults).
+6. **Models / deployments / SKUs / regions** — read `infra/resources.bicep` (Bicep is the source of truth, not docs).
+7. **NuGet versions / target framework** — read the relevant `*.csproj`. Don't trust any version numbers cached in markdown.
+8. **Known traps for a current task** — `grep_search` for the topic in `.github/agents/*.agent.md` (those _can_ go stale too — verify against source before quoting).
 
 When the user asks "what voice/model/prompt are we using?" → open the actual file. Never answer from memory or from this doc.
 
@@ -62,15 +63,15 @@ Read official guidelines **before** editing anything visual in `code/admin-chat/
 
 Design system docs (norlys.design — gated, fonts fall back to Georgia / Arial):
 
-| Topic            | URL                                                                          |
-| ---------------- | ---------------------------------------------------------------------------- |
-| Hub              | https://norlys.design/                                                       |
-| Visuel identitet | https://norlys.design/document/307                                           |
-| Logo             | https://norlys.design/document/307#/grundelementer/logo                      |
-| Farver           | https://norlys.design/document/307#/grundelementer/farver                    |
-| Typografi        | https://norlys.design/document/307#/grundelementer/typografi                 |
-| Digital design   | https://norlys.design/document/332                                           |
-| Ikoner (403 stk) | https://norlys.design/document/295                                           |
+| Topic            | URL                                                          |
+| ---------------- | ------------------------------------------------------------ |
+| Hub              | https://norlys.design/                                       |
+| Visuel identitet | https://norlys.design/document/307                           |
+| Logo             | https://norlys.design/document/307#/grundelementer/logo      |
+| Farver           | https://norlys.design/document/307#/grundelementer/farver    |
+| Typografi        | https://norlys.design/document/307#/grundelementer/typografi |
+| Digital design   | https://norlys.design/document/332                           |
+| Ikoner (403 stk) | https://norlys.design/document/295                           |
 
 Hard rules: headlines bold + left-aligned only · never `font-mono` in production UI (use `tabular-nums` for digits) · logo top-right or bottom-left · red is an accent, never dominant · WCAG AA contrast (≥ 4.5:1 body, ≥ 3:1 large) · Danish UI tone: enkelhed, handlekraft, optimisme; English for code/errors.
 

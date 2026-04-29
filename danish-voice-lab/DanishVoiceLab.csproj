@@ -11,8 +11,11 @@
 
   <ItemGroup>
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Shared with code/admin-chat: one source of truth for prompts. -->
-    <Content Include="..\personas.json" Link="personas.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- personas.json + Norlys phrase list + Voice Live defaults all come from here. -->
+    <ProjectReference Include="..\code\shared\ContactCenterAgent.Shared\ContactCenterAgent.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
