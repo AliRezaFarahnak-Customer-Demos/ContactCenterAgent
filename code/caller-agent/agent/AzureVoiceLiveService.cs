@@ -38,15 +38,6 @@ namespace CallAutomation.AzureAI.VoiceLive
         private Func<string, Task>? m_onHangUp;
         private bool m_pendingHangUp;
         private string? m_pendingHangUpReason;
-        // Greeting protection: when VoiceLive:ProtectFirstResponse=true, we send
-        // turn_detection.interrupt_response=false on the initial session.update so the
-        // server CANNOT auto-cancel TTS during the opening line (PSTN pickup noise, an
-        // early "hi"). After the first response.done we resend session.update with
-        // interrupt_response=true to restore normal barge-in. Defaults to FALSE so the
-        // baseline behavior is unchanged — set the env var VoiceLive__ProtectFirstResponse=true
-        // on the container app to enable.
-        private bool m_protectFirstResponse;
-        private bool m_greetingInFlight;
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
         private readonly IConfiguration m_configuration;
@@ -176,12 +167,6 @@ namespace CallAutomation.AzureAI.VoiceLive
                     }
                 }
 
-                // Read greeting-protection flag BEFORE UpdateSessionAsync so the initial
-                // session.update can include interrupt_response=false when enabled.
-                m_protectFirstResponse = m_configuration.GetValue<bool>("VoiceLive:ProtectFirstResponse", false);
-                m_greetingInFlight = m_protectFirstResponse;
-                m_logger.LogInformation("Greeting barge-in protection: {Enabled}", m_protectFirstResponse);
-
                 // Update session with Voice Live settings
                 await UpdateSessionAsync();
 
@@ -248,26 +233,17 @@ namespace CallAutomation.AzureAI.VoiceLive
                     input_audio_format = "pcm16",
                     output_audio_format = "pcm16",
                     instructions = effectivePrompt,
-                    // EXACT MIRROR of danish-voice-lab when ProtectFirstResponse is OFF.
-                    // When ON, we add interrupt_response=false (server-side barge-in disabled)
-                    // for the greeting only; UpdateSessionAfterGreetingAsync flips it back to
-                    // true after the first response.done.
-                    turn_detection = m_greetingInFlight
-                        ? (object)new
-                        {
-                            type = vadType,
-                            threshold = vadThreshold,
-                            prefix_padding_ms = vadPrefixPaddingMs,
-                            silence_duration_ms = vadSilenceMs,
-                            interrupt_response = false
-                        }
-                        : new
-                        {
-                            type = vadType,
-                            threshold = vadThreshold,
-                            prefix_padding_ms = vadPrefixPaddingMs,
-                            silence_duration_ms = vadSilenceMs
-                        },
+                    // EXACT MIRROR of danish-voice-lab: only these three VAD fields are sent.
+                    // Server defaults handle interrupt_response (true), remove_filler_words (off),
+                    // and auto_truncate. Adding extra fields was causing wire-payload drift vs
+                    // the console sandbox.
+                    turn_detection = new
+                    {
+                        type = vadType,
+                        threshold = vadThreshold,
+                        prefix_padding_ms = vadPrefixPaddingMs,
+                        silence_duration_ms = vadSilenceMs
+                    },
                     // No max_response_output_tokens cap — danish-voice-lab doesn't set one and
                     // we want identical behaviour. The system prompt's "1-2 sentences" rule
                     // is the soft constraint instead.
@@ -645,12 +621,6 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     m_logger.LogWarning("hang_up tool invoked but no OnHangUp callback registered");
                                 }
                                 break;
-                            }
-                            if (m_greetingInFlight)
-                            {
-                                m_greetingInFlight = false;
-                                m_logger.LogInformation("Greeting complete — re-enabling server-side barge-in");
-                                await UpdateSessionAsync();
                             }
                             m_logger.LogInformation("Model turn finished");
                         }
