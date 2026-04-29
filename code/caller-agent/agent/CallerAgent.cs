@@ -392,6 +392,24 @@ app.MapPost("/api/callbacks/{contextId}", async (
         logger.LogInformation("Event received: {EventType} for context {ContextId}",
             @event.GetType().Name, contextId);
 
+        // Surface the ACS failure reason for CreateCallFailed (and any other failure events).
+        // Without this we only see the event name and have no idea WHY ACS rejected the call.
+        if (@event is CreateCallFailed createCallFailed)
+        {
+            var ri = createCallFailed.ResultInformation;
+            logger.LogError(
+                "CreateCallFailed for context {ContextId}: code={Code}, subCode={SubCode}, message={Message}",
+                contextId, ri?.Code, ri?.SubCode, ri?.Message);
+            telemetryClient.TrackEvent("CreateCallFailedDetail", new Dictionary<string, string>
+            {
+                { "ContextId", contextId },
+                { "CallerId", callerId },
+                { "ResultCode", ri?.Code.ToString() ?? "" },
+                { "ResultSubCode", ri?.SubCode.ToString() ?? "" },
+                { "ResultMessage", ri?.Message ?? "" }
+            });
+        }
+
         telemetryClient.TrackEvent("CallAutomationEvent", new Dictionary<string, string>
         {
             { "EventType", @event.GetType().Name },

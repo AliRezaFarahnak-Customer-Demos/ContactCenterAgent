@@ -131,7 +131,11 @@ public static class Program
             {
                 Threshold = (float)VoiceLiveDefaults.VadThreshold,
                 PrefixPadding = TimeSpan.FromMilliseconds(VoiceLiveDefaults.VadPrefixPaddingMs),
-                SilenceDuration = TimeSpan.FromMilliseconds(VoiceLiveDefaults.VadSilenceDurationMs)
+                SilenceDuration = TimeSpan.FromMilliseconds(VoiceLiveDefaults.VadSilenceDurationMs),
+                // TEST: prove interrupt_response=false is accepted by the server.
+                // If the lab still works with this set, the field is fine and the
+                // prod issue is elsewhere (deploy, env, ACS callback wiring).
+                InterruptResponse = false
             }
         };
         opts.Modalities.Clear();
