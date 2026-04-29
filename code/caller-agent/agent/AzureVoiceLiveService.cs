@@ -510,16 +510,27 @@ namespace CallAutomation.AzureAI.VoiceLive
                         }
                         else if (msgType == "input_audio_buffer.speech_started")
                         {
-                            m_logger.LogInformation("VAD started — barge-in, cancelling AI response");
+                            if (m_greetingInFlight)
+                            {
+                                // Server has interrupt_response=false during greeting, so it
+                                // won't auto-cancel TTS. We must mirror that on the client side
+                                // — DO NOT send StopAudio or response.cancel, or the greeting
+                                // dies anyway. Just log and let the greeting finish.
+                                m_logger.LogInformation("VAD started during greeting — IGNORING (greeting protection)");
+                            }
+                            else
+                            {
+                                m_logger.LogInformation("VAD started — barge-in, cancelling AI response");
 
-                            // 1. Stop audio playback on the phone immediately
-                            var jsonString = OutStreamingData.GetStopAudioForOutbound();
-                            await m_mediaStreaming.SendMessageAsync(jsonString);
+                                // 1. Stop audio playback on the phone immediately
+                                var jsonString = OutStreamingData.GetStopAudioForOutbound();
+                                await m_mediaStreaming.SendMessageAsync(jsonString);
 
-                            // 2. Cancel the in-flight AI response so it stops generating
-                            await SendMessageAsync(
-                                JsonSerializer.Serialize(new { type = "response.cancel" }, s_compactJson),
-                                CancellationToken.None);
+                                // 2. Cancel the in-flight AI response so it stops generating
+                                await SendMessageAsync(
+                                    JsonSerializer.Serialize(new { type = "response.cancel" }, s_compactJson),
+                                    CancellationToken.None);
+                            }
                         }
                         else if (msgType == "input_audio_buffer.speech_stopped")
                         {
