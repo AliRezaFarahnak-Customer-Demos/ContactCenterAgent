@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------------------
+# Build context for the caller-agent image (see code/caller-agent/Dockerfile).
+# Build context is `code/` so the Dockerfile can reach `shared/`.
+# Allowlist only what caller-agent's build needs.
+# ---------------------------------------------------------------------------
+
+# Ignore everything by default
+**
+
+# --- Folders the caller-agent build needs ---
+!caller-agent/
+!caller-agent/**
+!shared/
+!shared/**
+
+# --- Re-exclude junk inside allowed folders ---
+**/bin/
+**/obj/
+**/.vs/
+**/Properties/launchSettings.json
+**/appsettings.Development.json
+**/*.user
+**/*.suo
+**/.DS_Store
+**/Thumbs.db

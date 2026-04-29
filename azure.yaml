@@ -81,7 +81,9 @@ services:
     project: code/caller-agent
     host: containerapp
     language: docker
+    # Build context is the parent `code/` folder so the Dockerfile can COPY
+    # the shared project at `code/shared/`. See code/caller-agent/Dockerfile.
     docker:
       path: ./Dockerfile
-      context: .
+      context: ../
       remoteBuild: true

@@ -161,7 +161,11 @@ jobs:
             context: code/admin-chat
             image: admin-chat
           - service: caller-agent
-            context: code/caller-agent
+            # Context is `code/` (not `code/caller-agent`) so the Dockerfile
+            # can COPY the shared project at `code/shared/`. See
+            # code/caller-agent/Dockerfile.
+            context: code
+            dockerfile: code/caller-agent/Dockerfile
             image: caller-agent
 
     env:
@@ -232,6 +236,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile || format('{0}/Dockerfile', matrix.context) }}
           push: true
           tags: |
             ${{ env.ACR_NAME }}.azurecr.io/${{ matrix.image }}:${{ github.sha }}
