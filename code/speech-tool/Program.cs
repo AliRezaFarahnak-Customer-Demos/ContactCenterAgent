@@ -407,6 +407,113 @@ danishLabCommand.SetHandler(async (InvocationContext context) =>
             DanishLabHelpers.BuildSsmlExpressAs("da-DK", ChristelHD,
                 EscapeXml("Nu råber jeg! Din regning er på to tusind og firehundrede kroner, og den forfalder den femtende maj!"),
                 style: "shouting")),
+
+        // ── IMPRESS set: shouting / angry / panicked at maximum expressiveness ──
+        // Designed to demo HD Omni to Microsoft customers. Combines:
+        //   - the most dramatic styles (shouting, angry, panicked, terrified, urgent)
+        //   - Omni parameter knobs from the docs at max expressiveness
+        //     (temperature=1.0; top_p=1.0; top_k=50; cfg_scale=1.8)
+        //   - both Danish (Christel/Jeppe HD Omni) AND English (Ava/Andrew HD Omni
+        //     — these have the strongest documented style adherence on Omni)
+        //   - matching content (yelling text gets yelled, angry text sounds angry —
+        //     style results are "strongly relevant to the input content" per docs)
+        // Demo flow tip: play 100 → 101 → 105 → 110 → 111 back-to-back.
+        new Variant("100-impress-da-shouting-max",
+            "IMPRESS: Christel HD Omni — SHOUTING + max params (temp=1.0, top_p=1.0, top_k=50, cfg_scale=1.8)",
+            DanishLabHelpers.BuildSsmlExpressAs("da-DK", ChristelHD,
+                EscapeXml("STOP! Hør lige efter! Det er fuldstændig uacceptabelt! Jeg har ringet THREE gange i dag, og INGEN har svaret mig! Det her skal løses NU!"),
+                style: "shouting",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("101-impress-da-angry-max",
+            "IMPRESS: Christel HD Omni — ANGRY + max params",
+            DanishLabHelpers.BuildSsmlExpressAs("da-DK", ChristelHD,
+                EscapeXml("Det her er simpelthen ikke godt nok! I har trukket pengene to gange fra min konto, og ingen kan forklare hvorfor. Jeg er rasende lige nu!"),
+                style: "angry",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("102-impress-da-panicked",
+            "IMPRESS: Christel HD Omni — PANICKED (urgency emergency call)",
+            DanishLabHelpers.BuildSsmlExpressAs("da-DK", ChristelHD,
+                EscapeXml("Åh nej, åh nej, der er ingen strøm i HELE huset! Min mor er på respirator! Jeg har brug for hjælp NU, kan I sende nogen med det samme?!"),
+                style: "panicked",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("103-impress-da-terrified",
+            "IMPRESS: Christel HD Omni — TERRIFIED",
+            DanishLabHelpers.BuildSsmlExpressAs("da-DK", ChristelHD,
+                EscapeXml("Der... der er nogen i haven... jeg kan høre dem... åh gud, hvad skal jeg gøre?!"),
+                style: "terrified",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("104-impress-da-urgent",
+            "IMPRESS: Christel HD Omni — URGENT (sharp, fast, no-nonsense)",
+            DanishLabHelpers.BuildSsmlExpressAs("da-DK", ChristelHD,
+                EscapeXml("Hør her — vi har ti minutter, før strømmen ryger igen. Tag din telefon, en lommelygte og din far, og kom ned i kælderen NU."),
+                style: "urgent",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("105-impress-da-jeppe-shouting",
+            "IMPRESS: Jeppe (male) HD Omni — SHOUTING + max params (deeper, more intense)",
+            DanishLabHelpers.BuildSsmlExpressAs("da-DK", JeppeHD,
+                EscapeXml("HEY! Det kan I simpelthen ikke være bekendt! I har spildt min tid HELE dagen! Jeg vil tale med en chef, og jeg vil tale med en chef NU!"),
+                style: "shouting",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("106-impress-da-jeppe-angry",
+            "IMPRESS: Jeppe HD Omni — ANGRY (male voice, often more intimidating)",
+            DanishLabHelpers.BuildSsmlExpressAs("da-DK", JeppeHD,
+                EscapeXml("Det er fjerde gang denne måned at jeres system er nede. Fjerde gang! Jeg betaler ikke for det her rod længere — jeg opsiger min aftale i dag."),
+                style: "angry",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        // ── English HD Omni — strongest style adherence per docs ─────────────
+        // (Auto style prediction is documented for en-US-Ava and en-US-Andrew.
+        //  Use these to show Microsoft what HD Omni can REALLY do at peak.)
+        new Variant("110-impress-en-ava-shouting",
+            "IMPRESS: Ava (en-US HD Omni) — SHOUTING + max params (peak expressiveness)",
+            DanishLabHelpers.BuildSsmlExpressAs("en-US", AvaHD,
+                EscapeXml("STOP! Listen to me! This is completely unacceptable! I've called THREE times today, and NOBODY has answered me! Fix this RIGHT NOW!"),
+                style: "shouting",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("111-impress-en-ava-angry",
+            "IMPRESS: Ava HD Omni — ANGRY + max params",
+            DanishLabHelpers.BuildSsmlExpressAs("en-US", AvaHD,
+                EscapeXml("This is absolutely ridiculous. You charged my card twice, and not one person in your company can tell me why. I am furious right now."),
+                style: "angry",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("112-impress-en-andrew-shouting",
+            "IMPRESS: Andrew (en-US HD Omni male) — SHOUTING + max params",
+            DanishLabHelpers.BuildSsmlExpressAs("en-US", AndrewHD,
+                EscapeXml("HEY! Get back here! You can NOT just walk out of this meeting! We have been waiting for THREE WEEKS for an answer, and you're going to give it to me TODAY!"),
+                style: "shouting",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("113-impress-en-andrew-angry",
+            "IMPRESS: Andrew HD Omni — ANGRY + max params",
+            DanishLabHelpers.BuildSsmlExpressAs("en-US", AndrewHD,
+                EscapeXml("I have had it with this. Every single time I call, I get a different answer, and every single time, the problem comes back. This is the LAST time I'm calling about this."),
+                style: "angry",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        new Variant("114-impress-en-ava-panicked",
+            "IMPRESS: Ava HD Omni — PANICKED (great for IVR / emergency demos)",
+            DanishLabHelpers.BuildSsmlExpressAs("en-US", AvaHD,
+                EscapeXml("Oh god, oh god — there's smoke coming from the kitchen, the alarm isn't going off, and my kids are upstairs! Please send someone, please, RIGHT NOW!"),
+                style: "panicked",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
+
+        // ── Range demo: same Ava voice swinging from calm to shouting ────────
+        // Single clip showing HD Omni's emotional range in one breath. Great
+        // closer for the demo — proves the voice can pivot, not just one mood.
+        new Variant("120-impress-en-ava-range-calm-to-shouting",
+            "IMPRESS: Ava HD Omni — emotional RANGE (calm reassurance flips into shouting)",
+            DanishLabHelpers.BuildSsmlExpressAs("en-US", AvaHD,
+                EscapeXml("Sir, please, just take a deep breath. We're going to figure this out together, okay? ... wait. Wait. WHAT did you just say?! You did WHAT with my account?! Put your manager on the phone RIGHT NOW!"),
+                style: "shouting",
+                parameters: "temperature=1.0;top_p=1.0;top_k=50;cfg_scale=1.8")),
     };
 
     var selected = variants
