@@ -38,6 +38,16 @@ namespace CallAutomation.AzureAI.VoiceLive
         private Func<string, Task>? m_onHangUp;
         private bool m_pendingHangUp;
         private string? m_pendingHangUpReason;
+        // Hang-up sequencing state.
+        // The model emits a response containing ONLY the hang_up tool call (no audio).
+        // We then send a fresh response.create asking for a spoken farewell. The OLD
+        // response.done arrives ~1ms after our response.create — we must NOT treat that
+        // as the farewell finishing. We track which response_id contained the hang_up
+        // tool call and ignore its response.done; the NEXT response.done with a different
+        // id is the actual farewell.
+        private string? m_hangUpResponseId;
+        private long m_farewellAudioBytes;
+        private bool m_farewellDisconnectScheduled;
         // Greeting protection state.
         // m_greetingInFlight: client-side gate — ignore VAD events during greeting playback.
         // m_greetingDelayScheduled: ensure the post-greeting Task.Delay/UpdateSession is
@@ -536,6 +546,14 @@ namespace CallAutomation.AzureAI.VoiceLive
                             {
                                 m_greetingAudioBytesSent += audioBytes.Length;
                             }
+                            // While waiting for the farewell, count bytes from any response
+                            // OTHER than the hang_up response itself (the hang_up response
+                            // emits no audio, so in practice all deltas after hang_up belong
+                            // to the farewell). Used to compute realistic playback duration.
+                            if (m_pendingHangUp)
+                            {
+                                m_farewellAudioBytes += audioBytes.Length;
+                            }
                             var jsonString = OutStreamingData.GetAudioDataForOutbound(audioBytes);
                             await m_mediaStreaming.SendMessageAsync(jsonString);
                         }
@@ -628,12 +646,19 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     { "chat.phone_number", m_phoneNumber ?? "" }
                                 });
 
-                                // Store the hang-up intent — we'll disconnect AFTER the farewell audio completes
+                                // Store the hang-up intent — we'll disconnect AFTER the farewell audio completes.
+                                // Capture the response_id of the response that contains this tool call so
+                                // we can ignore its imminent response.done and only act on the NEXT one
+                                // (which will be the farewell).
                                 m_pendingHangUp = true;
                                 m_pendingHangUpReason = args ?? "AI initiated hang up";
+                                m_hangUpResponseId = data.ContainsKey("response_id") ? data["response_id"]?.ToString() : null;
+                                m_farewellAudioBytes = 0;
+                                m_farewellDisconnectScheduled = false;
 
-                                // Send tool output that forces the model to speak a Norlys farewell
-                                var farewellLang = !string.IsNullOrEmpty(m_language) ? $" in {m_language}" : " in Danish";
+                                // Acknowledge the tool call with a proper JSON tool result.
+                                // (Earlier versions stuffed instructions into `output` — that's not
+                                // how Realtime API tool results work. Instructions go on response.create.)
                                 var toolOutput = new
                                 {
                                     type = "conversation.item.create",
@@ -641,14 +666,46 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     {
                                         type = "function_call_output",
                                         call_id = callId,
-                                        output = $"Say a brief, warm farewell{farewellLang} that thanks the caller for being a Norlys customer and wishes them a good day. ONE short sentence, e.g. 'Tak fordi du er kunde hos Norlys — hav en god dag, farvel.' Do NOT add anything else, do NOT ask further questions."
+                                        output = "{\"success\":true}"
                                     }
                                 };
                                 await SendMessageAsync(JsonSerializer.Serialize(toolOutput), CancellationToken.None);
 
-                                // Trigger a new response so the model actually speaks the farewell
-                                await SendMessageAsync(JsonSerializer.Serialize(new { type = "response.create" }), CancellationToken.None);
-                                m_logger.LogInformation("Farewell response triggered — will disconnect after audio completes");
+                                // Force a new response with explicit per-response instructions that
+                                // OVERRIDE the session prompt for just this turn. This is the reliable
+                                // way to make the model say a specific line — far more robust than
+                                // hoping the session prompt's MANDATORY rule sticks under barge-in pressure.
+                                var farewellLang = !string.IsNullOrEmpty(m_language) ? m_language : "Danish";
+                                var farewellInstructions = $"Speak ONE short, warm farewell in {farewellLang}. Thank the caller for being a Norlys customer and wish them a good day. Use exactly: 'Tak fordi du er kunde hos Norlys, hav en rigtig god dag, farvel.' (translate to {farewellLang} if not Danish). Do NOT say anything else. Do NOT ask any questions. Do NOT call any tools.";
+                                var farewellResponse = new
+                                {
+                                    type = "response.create",
+                                    response = new
+                                    {
+                                        modalities = new[] { "audio", "text" },
+                                        instructions = farewellInstructions
+                                    }
+                                };
+                                await SendMessageAsync(JsonSerializer.Serialize(farewellResponse), CancellationToken.None);
+                                m_logger.LogInformation("Farewell response triggered — will disconnect after farewell audio completes (hang_up response_id: {ResponseId})", m_hangUpResponseId ?? "<unknown>");
+
+                                // Safety net: if Voice Live never emits a farewell response.done
+                                // (silent failure, error, etc.), force-disconnect after a max wait
+                                // so the call doesn't hang open indefinitely.
+                                _ = Task.Run(async () =>
+                                {
+                                    const int FarewellMaxWaitMs = 12000;
+                                    await Task.Delay(FarewellMaxWaitMs);
+                                    if (m_pendingHangUp && !m_farewellDisconnectScheduled)
+                                    {
+                                        m_logger.LogWarning("Farewell did not complete within {MaxWait}ms — forcing disconnect", FarewellMaxWaitMs);
+                                        m_farewellDisconnectScheduled = true;
+                                        if (m_onHangUp != null)
+                                        {
+                                            await m_onHangUp(m_pendingHangUpReason ?? "AI initiated hang up — farewell timeout");
+                                        }
+                                    }
+                                });
                             }
                         }
                         else if (msgType == "response.done")
@@ -664,13 +721,43 @@ namespace CallAutomation.AzureAI.VoiceLive
 
                             if (m_pendingHangUp)
                             {
-                                // Farewell audio has been fully generated and streamed — now disconnect.
-                                // Hard delay = farewell speech duration buffer + ACS RTP flush.
-                                // 6s is enough for ~15-20 Danish syllables ("Tak fordi du er kunde hos Norlys, hav en god dag, farvel")
-                                // played at standard TTS rate, plus a 1s tail so the line doesn't die mid-word.
-                                const int FarewellHangUpDelayMs = 6000;
-                                m_logger.LogInformation("Farewell response complete — disconnecting in {Delay}ms", FarewellHangUpDelayMs);
-                                await Task.Delay(FarewellHangUpDelayMs);
+                                // Identify which response just finished. The response that contained
+                                // the hang_up tool call has no audio — its response.done arrives ~1ms
+                                // after we send response.create for the farewell. We must ignore it and
+                                // wait for the NEXT response.done (the farewell with audio).
+                                string? thisResponseId = null;
+                                try
+                                {
+                                    if (data.ContainsKey("response") && data["response"] is JsonElement respElem &&
+                                        respElem.ValueKind == JsonValueKind.Object &&
+                                        respElem.TryGetProperty("id", out var idElem))
+                                    {
+                                        thisResponseId = idElem.GetString();
+                                    }
+                                }
+                                catch { /* best-effort id extraction */ }
+
+                                if (!string.IsNullOrEmpty(m_hangUpResponseId) && thisResponseId == m_hangUpResponseId)
+                                {
+                                    m_logger.LogInformation("Ignoring response.done for hang_up tool-call response {ResponseId} — waiting for farewell response", thisResponseId);
+                                    continue;
+                                }
+
+                                // This is the farewell response. Compute playback delay from the actual
+                                // streamed audio bytes (same math as the greeting): Voice Live emits
+                                // 24 kHz pcm16 = 48000 bytes/sec. Add a safety tail for ACS RTP jitter.
+                                m_farewellDisconnectScheduled = true;
+                                const int VoiceLiveBytesPerSecond = 24000 * 2;
+                                const int SafetyTailMs = 500;
+                                var bytesSnapshot = m_farewellAudioBytes;
+                                var playbackMs = (int)(bytesSnapshot * 1000L / VoiceLiveBytesPerSecond) + SafetyTailMs;
+                                // Floor: 1.5s in case bytes counter is unexpectedly 0.
+                                // Ceiling: 8s — a Norlys farewell is never longer than that.
+                                playbackMs = Math.Clamp(playbackMs, 1500, 8000);
+                                m_logger.LogInformation(
+                                    "Farewell response.done ({ResponseId}) — disconnecting in {Delay}ms while {Bytes} bytes finish playing",
+                                    thisResponseId ?? "<unknown>", playbackMs, bytesSnapshot);
+                                await Task.Delay(playbackMs);
 
                                 if (m_onHangUp != null)
                                 {
