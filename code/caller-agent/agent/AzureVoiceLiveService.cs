@@ -38,6 +38,11 @@ namespace CallAutomation.AzureAI.VoiceLive
         private Func<string, Task>? m_onHangUp;
         private bool m_pendingHangUp;
         private string? m_pendingHangUpReason;
+        // Protect the opening greeting from spurious barge-in (PSTN line noise on pickup,
+        // a quick "hi" while AI is still on "Hej Mette..."). Cleared after the first
+        // response.done so normal barge-in resumes for the rest of the call.
+        private bool m_protectFirstResponse = true;
+        private bool m_firstResponseProtectionActive = true;
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
         private readonly IConfiguration m_configuration;
@@ -169,6 +174,11 @@ namespace CallAutomation.AzureAI.VoiceLive
 
                 // Update session with Voice Live settings
                 await UpdateSessionAsync();
+
+                // Read first-response barge-in protection setting (default: true)
+                m_protectFirstResponse = m_configuration.GetValue<bool>("VoiceLive:ProtectFirstResponse", true);
+                m_firstResponseProtectionActive = m_protectFirstResponse;
+                m_logger.LogInformation("First-response barge-in protection: {Enabled}", m_protectFirstResponse);
 
                 // Start response from AI
                 await StartResponseAsync();
@@ -492,16 +502,27 @@ namespace CallAutomation.AzureAI.VoiceLive
                         }
                         else if (msgType == "input_audio_buffer.speech_started")
                         {
-                            m_logger.LogInformation("VAD started — barge-in, cancelling AI response");
+                            if (m_firstResponseProtectionActive && m_protectFirstResponse)
+                            {
+                                // Greeting is still playing — ignore VAD so the opening line
+                                // ALWAYS completes. Without this, PSTN pickup noise or an early
+                                // "hi" cuts the AI off mid-greeting and it skips straight to
+                                // the security script.
+                                m_logger.LogInformation("VAD started during opening greeting — IGNORING (first-response protection)");
+                            }
+                            else
+                            {
+                                m_logger.LogInformation("VAD started — barge-in, cancelling AI response");
 
-                            // 1. Stop audio playback on the phone immediately
-                            var jsonString = OutStreamingData.GetStopAudioForOutbound();
-                            await m_mediaStreaming.SendMessageAsync(jsonString);
+                                // 1. Stop audio playback on the phone immediately
+                                var jsonString = OutStreamingData.GetStopAudioForOutbound();
+                                await m_mediaStreaming.SendMessageAsync(jsonString);
 
-                            // 2. Cancel the in-flight AI response so it stops generating
-                            await SendMessageAsync(
-                                JsonSerializer.Serialize(new { type = "response.cancel" }, s_compactJson),
-                                CancellationToken.None);
+                                // 2. Cancel the in-flight AI response so it stops generating
+                                await SendMessageAsync(
+                                    JsonSerializer.Serialize(new { type = "response.cancel" }, s_compactJson),
+                                    CancellationToken.None);
+                            }
                         }
                         else if (msgType == "input_audio_buffer.speech_stopped")
                         {
@@ -621,6 +642,11 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     m_logger.LogWarning("hang_up tool invoked but no OnHangUp callback registered");
                                 }
                                 break;
+                            }
+                            if (m_firstResponseProtectionActive)
+                            {
+                                m_firstResponseProtectionActive = false;
+                                m_logger.LogInformation("Opening greeting complete — barge-in now enabled for rest of call");
                             }
                             m_logger.LogInformation("Model turn finished");
                         }
