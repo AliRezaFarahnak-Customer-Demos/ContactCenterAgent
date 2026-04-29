@@ -37,6 +37,9 @@ param(
     [string]$ContainerAppName = "ca-caller-agent",
 
     [Parameter(Mandatory = $false)]
+    [string]$PreferredPhoneNumber = "",
+
+    [Parameter(Mandatory = $false)]
     [switch]$Force
 )
 
@@ -272,11 +275,32 @@ catch {
 }
 
 if ($existingNumbers -and $existingNumbers.Count -gt 0 -and -not $Force) {
-    $phoneNumber = $existingNumbers[0].phoneNumber
+    # Selection priority when multiple numbers are provisioned on the ACS resource:
+    #   1. -PreferredPhoneNumber (exact match) if supplied
+    #   2. Newest by purchaseDate (descending)
+    #   3. First in the unordered API response (legacy fallback)
+    $selected = $null
+    if ($PreferredPhoneNumber) {
+        $selected = $existingNumbers | Where-Object { $_.phoneNumber -eq $PreferredPhoneNumber } | Select-Object -First 1
+        if (-not $selected) {
+            Write-Host "  WARNING: -PreferredPhoneNumber '$PreferredPhoneNumber' not found on ACS resource. Falling back to newest-purchased." -ForegroundColor Yellow
+        }
+    }
+    if (-not $selected -and ($existingNumbers | Where-Object { $_.purchaseDate })) {
+        $selected = $existingNumbers | Where-Object { $_.purchaseDate } | Sort-Object { [datetime]$_.purchaseDate } -Descending | Select-Object -First 1
+    }
+    if (-not $selected) {
+        $selected = $existingNumbers[0]
+    }
+    $phoneNumber = $selected.phoneNumber
     Write-Host ""
     Write-Host "  SKIPPING PROVISIONING - Phone number already exists!" -ForegroundColor Green
-    Write-Host "  Existing number: $phoneNumber" -ForegroundColor Cyan
-    Write-Host "  (pass -Force to purchase an additional number)" -ForegroundColor Gray
+    Write-Host "  Selected number: $phoneNumber" -ForegroundColor Cyan
+    if ($existingNumbers.Count -gt 1) {
+        $allNumbers = ($existingNumbers | ForEach-Object { $_.phoneNumber }) -join ", "
+        Write-Host "  (chose from $($existingNumbers.Count) provisioned: $allNumbers)" -ForegroundColor Gray
+    }
+    Write-Host "  (pass -Force to purchase an additional number, or -PreferredPhoneNumber to pin a specific one)" -ForegroundColor Gray
     Write-Host ""
 }
 else {

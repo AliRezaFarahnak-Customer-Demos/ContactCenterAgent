@@ -137,11 +137,19 @@ jobs:
       - name: Provision phone number
         if: steps.infra-check.outputs.changed == 'true'
         shell: pwsh
+        env:
+          # Pin the production caller number. Set as a GitHub Actions variable
+          # (Settings → Environments → production → Variables) so it survives
+          # workflow re-runs and isn't clobbered when multiple numbers exist
+          # on the ACS resource (e.g. an old US toll-free + the real DK number).
+          # Leave empty to fall back to "newest-purchased on ACS resource".
+          PREFERRED_PHONE_NUMBER: ${{ vars.ACS_PHONE_NUMBER || '+4532746120' }}
         run: |
           ./scripts/provision-phone-number.ps1 `
             -ResourceGroup ${{ env.RESOURCE_GROUP }} `
             -AcsResourceName "acs-contactcenteragent" `
-            -ContainerAppName "${{ env.CONTAINER_APP_CALLER }}"
+            -ContainerAppName "${{ env.CONTAINER_APP_CALLER }}" `
+            -PreferredPhoneNumber "$env:PREFERRED_PHONE_NUMBER"
 
   # =====================================================================
   # Job 2: Build & push Docker images (parallel matrix — 2 runners)
