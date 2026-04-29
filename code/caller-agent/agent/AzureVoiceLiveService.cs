@@ -38,11 +38,9 @@ namespace CallAutomation.AzureAI.VoiceLive
         private Func<string, Task>? m_onHangUp;
         private bool m_pendingHangUp;
         private string? m_pendingHangUpReason;
-        // Protect the opening greeting from spurious barge-in (PSTN line noise on pickup,
-        // a quick "hi" while AI is still on "Hej Mette..."). Cleared after the first
-        // response.done so normal barge-in resumes for the rest of the call.
-        private bool m_protectFirstResponse = true;
-        private bool m_firstResponseProtectionActive = true;
+        // True until the opening greeting's response.done arrives. While true, the server
+        // session has interrupt_response=false so the greeting cannot be barged-in.
+        private bool m_greetingInFlight = true;
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
         private readonly IConfiguration m_configuration;
@@ -172,13 +170,11 @@ namespace CallAutomation.AzureAI.VoiceLive
                     }
                 }
 
-                // Update session with Voice Live settings
-                await UpdateSessionAsync();
-
-                // Read first-response barge-in protection setting (default: true)
-                m_protectFirstResponse = m_configuration.GetValue<bool>("VoiceLive:ProtectFirstResponse", true);
-                m_firstResponseProtectionActive = m_protectFirstResponse;
-                m_logger.LogInformation("First-response barge-in protection: {Enabled}", m_protectFirstResponse);
+                // Update session with Voice Live settings.
+                // Initial session.update sends interrupt_response=false so the greeting
+                // cannot be barged-in. We re-enable barge-in via a follow-up session.update
+                // when the first response.done arrives.
+                await UpdateSessionAsync(allowInterrupt: false);
 
                 // Start response from AI
                 await StartResponseAsync();
@@ -196,7 +192,7 @@ namespace CallAutomation.AzureAI.VoiceLive
             }
         }
 
-        private async Task UpdateSessionAsync()
+        private async Task UpdateSessionAsync(bool allowInterrupt)
         {
             // Build effective system prompt: persona prompt only (verbatim).
             // The previous "CRITICAL LANGUAGE RULE" block was removed to achieve 1:1 wire-payload
@@ -243,16 +239,19 @@ namespace CallAutomation.AzureAI.VoiceLive
                     input_audio_format = "pcm16",
                     output_audio_format = "pcm16",
                     instructions = effectivePrompt,
-                    // EXACT MIRROR of danish-voice-lab: only these three VAD fields are sent.
-                    // Server defaults handle interrupt_response (true), remove_filler_words (off),
-                    // and auto_truncate. Adding extra fields was causing wire-payload drift vs
-                    // the console sandbox.
+                    // interrupt_response controls SERVER-SIDE barge-in (default: true on the
+                    // service). For the opening greeting we send false so PSTN pickup noise or
+                    // an early "hi" cannot cancel "Hej Mette...". After the first response.done
+                    // we resend session.update with interrupt_response=true.
+                    // Per docs: interrupt_response is only valid with azure_semantic_vad and
+                    // azure_semantic_vad_multilingual.
                     turn_detection = new
                     {
                         type = vadType,
                         threshold = vadThreshold,
                         prefix_padding_ms = vadPrefixPaddingMs,
-                        silence_duration_ms = vadSilenceMs
+                        silence_duration_ms = vadSilenceMs,
+                        interrupt_response = allowInterrupt
                     },
                     // No max_response_output_tokens cap — danish-voice-lab doesn't set one and
                     // we want identical behaviour. The system prompt's "1-2 sentences" rule
@@ -502,27 +501,16 @@ namespace CallAutomation.AzureAI.VoiceLive
                         }
                         else if (msgType == "input_audio_buffer.speech_started")
                         {
-                            if (m_firstResponseProtectionActive && m_protectFirstResponse)
-                            {
-                                // Greeting is still playing — ignore VAD so the opening line
-                                // ALWAYS completes. Without this, PSTN pickup noise or an early
-                                // "hi" cuts the AI off mid-greeting and it skips straight to
-                                // the security script.
-                                m_logger.LogInformation("VAD started during opening greeting — IGNORING (first-response protection)");
-                            }
-                            else
-                            {
-                                m_logger.LogInformation("VAD started — barge-in, cancelling AI response");
+                            m_logger.LogInformation("VAD started — barge-in, cancelling AI response");
 
-                                // 1. Stop audio playback on the phone immediately
-                                var jsonString = OutStreamingData.GetStopAudioForOutbound();
-                                await m_mediaStreaming.SendMessageAsync(jsonString);
+                            // 1. Stop audio playback on the phone immediately
+                            var jsonString = OutStreamingData.GetStopAudioForOutbound();
+                            await m_mediaStreaming.SendMessageAsync(jsonString);
 
-                                // 2. Cancel the in-flight AI response so it stops generating
-                                await SendMessageAsync(
-                                    JsonSerializer.Serialize(new { type = "response.cancel" }, s_compactJson),
-                                    CancellationToken.None);
-                            }
+                            // 2. Cancel the in-flight AI response so it stops generating
+                            await SendMessageAsync(
+                                JsonSerializer.Serialize(new { type = "response.cancel" }, s_compactJson),
+                                CancellationToken.None);
                         }
                         else if (msgType == "input_audio_buffer.speech_stopped")
                         {
@@ -643,10 +631,11 @@ namespace CallAutomation.AzureAI.VoiceLive
                                 }
                                 break;
                             }
-                            if (m_firstResponseProtectionActive)
+                            if (m_greetingInFlight)
                             {
-                                m_firstResponseProtectionActive = false;
-                                m_logger.LogInformation("Opening greeting complete — barge-in now enabled for rest of call");
+                                m_greetingInFlight = false;
+                                m_logger.LogInformation("Opening greeting complete — enabling server-side barge-in");
+                                await UpdateSessionAsync(allowInterrupt: true);
                             }
                             m_logger.LogInformation("Model turn finished");
                         }
