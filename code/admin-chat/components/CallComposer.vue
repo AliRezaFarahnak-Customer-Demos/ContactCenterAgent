@@ -141,16 +141,22 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
       startIdx + 1,
       endIdx === -1 ? lines.length : endIdx,
     );
-    return slice
-      .map((line) => line.trim())
-      .filter((line) => line && line.includes(":"))
-      .map((line) => {
-        const idx = line.indexOf(":");
-        return {
-          label: line.slice(0, idx).trim(),
-          value: line.slice(idx + 1).trim(),
-        };
-      });
+    return (
+      slice
+        .map((line) => line.trim())
+        .filter((line) => line && line.includes(":"))
+        .map((line) => {
+          const idx = line.indexOf(":");
+          return {
+            label: line.slice(0, idx).trim(),
+            value: line.slice(idx + 1).trim(),
+          };
+        })
+        // "Navn" is just for greeting (the AI says it out loud) — not a secret.
+        // Hide it from the cheat-sheet so the operator sees only the actual
+        // verification questions the customer must answer.
+        .filter((f) => f.label.toLowerCase() !== "navn")
+    );
   },
 );
 </script>

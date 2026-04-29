@@ -39,6 +39,21 @@ export default defineEventHandler(async (event) => {
   const local = body.phoneNumber.replace(/[^\d]/g, "").replace(/^0+/, "");
   const fullNumber = `+${cc}${local}`;
 
+  // Substitute the literal "CustomerName" placeholder with the "Navn:" value
+  // from the SECURITY QUESTIONS block at the top of the prompt. Keeps the
+  // greeting personal ("Hej Mette, ...") without forcing the operator to
+  // hand-edit every occurrence — they just edit `Navn:` once and it propagates.
+  // If no Navn: is found, "CustomerName" stays as-is and the LLM will skip it
+  // gracefully (Voice Live tends to read "Hej, jeg ringer …" naturally).
+  let prompt = body.prompt;
+  const navnMatch = prompt.match(/^[ \t]*Navn[ \t]*:[ \t]*(.+?)[ \t]*$/im);
+  if (navnMatch) {
+    const fullName = navnMatch[1].trim();
+    // Use first name only for the greeting — feels more natural in Danish than the full name.
+    const firstName = fullName.split(/\s+/)[0];
+    prompt = prompt.replaceAll("CustomerName", firstName);
+  }
+
   try {
     const upstream = await fetch(`${callerAgentUrl}/api/outboundCall`, {
       method: "POST",
@@ -46,7 +61,7 @@ export default defineEventHandler(async (event) => {
       body: JSON.stringify({
         phoneNumber: fullNumber,
         purpose: body.personaLabel,
-        systemPrompt: body.prompt,
+        systemPrompt: prompt,
         name: body.personaLabel,
         language: body.language,
         languageCode: body.languageCode,
