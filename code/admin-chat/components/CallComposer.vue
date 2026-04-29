@@ -112,21 +112,36 @@ const vAutosize = {
 };
 
 /**
- * Extract the "### Verifikationsfakta" block from the prompt and parse it into
- * a list of { label, value } pairs so the UI can show them as a cheat sheet
- * — handy when demoing, since these are the values the customer must speak
- * to pass the AI's identity check.
+ * Parse the SECURITY QUESTIONS block at the top of the prompt into a list of
+ * { label, value } pairs so the UI can show them as a cheat sheet — handy
+ * when demoing, since these are the values the customer must speak to pass
+ * the AI's identity check. Block format:
+ *
+ *   SECURITY QUESTIONS
+ *   Adresse: Hovedgaden 12
+ *   Email: kunde@example.dk
+ *   END OF SECURITY QUESTIONS
+ *
+ * Delimiters are case-insensitive and trimmed. Lines without ":" are ignored.
  */
 const verificationFacts = computed<Array<{ label: string; value: string }>>(
   () => {
     const text = promptText.value;
     if (!text) return [];
-    const match = text.match(
-      /###\s*Verifikationsfakta[^\n]*\n([\s\S]*?)(?=\n#|\n\n#|$)/i,
+    const lines = text.split(/\r?\n/);
+    const startIdx = lines.findIndex(
+      (l) => l.trim().toUpperCase() === "SECURITY QUESTIONS",
     );
-    if (!match) return [];
-    return match[1]
-      .split("\n")
+    if (startIdx === -1) return [];
+    const endIdx = lines.findIndex(
+      (l, i) =>
+        i > startIdx && l.trim().toUpperCase() === "END OF SECURITY QUESTIONS",
+    );
+    const slice = lines.slice(
+      startIdx + 1,
+      endIdx === -1 ? lines.length : endIdx,
+    );
+    return slice
       .map((line) => line.trim())
       .filter((line) => line && line.includes(":"))
       .map((line) => {
