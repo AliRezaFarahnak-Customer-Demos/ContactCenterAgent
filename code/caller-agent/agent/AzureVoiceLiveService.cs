@@ -38,16 +38,17 @@ namespace CallAutomation.AzureAI.VoiceLive
         private Func<string, Task>? m_onHangUp;
         private bool m_pendingHangUp;
         private string? m_pendingHangUpReason;
-        // Greeting protection state. Tracks bytes of greeting audio sent so we can
-        // wait for the phone to finish PLAYING before flipping protection off.
-        // response.done fires when the server is done generating (faster than realtime),
-        // not when ACS has finished playing audio over PSTN.
+        // Greeting protection state.
+        // m_greetingInFlight: client-side gate — ignore VAD events during greeting playback.
+        // m_greetingDelayScheduled: ensure the post-greeting Task.Delay/UpdateSession is
+        //   scheduled exactly ONCE (response.done fires for every AI turn, but only the
+        //   FIRST one is the greeting).
+        // m_greetingAudioBytesSent: bytes streamed during the greeting, used to compute
+        //   how long PSTN playback will actually take (response.done fires when the SERVER
+        //   finishes generating, which is much faster than realtime).
         private bool m_greetingInFlight = true;
+        private bool m_greetingDelayScheduled;
         private long m_greetingAudioBytesSent;
-        // ACS outbound audio: 16-bit PCM mono @ 16 kHz → 32000 bytes per second.
-        // (Voice Live sends 24 kHz pcm16 but OutStreamingData.GetAudioDataForOutbound
-        // resamples to ACS's 16 kHz expectation.)
-        private const int OutboundBytesPerSecond = 16000 * 2;
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
         private readonly IConfiguration m_configuration;
@@ -247,8 +248,13 @@ namespace CallAutomation.AzureAI.VoiceLive
                     input_audio_format = "pcm16",
                     output_audio_format = "pcm16",
                     instructions = effectivePrompt,
-                    // Mirrors danish-voice-lab. interrupt_response is added only while
-                    // m_greetingInFlight=true (server defaults to true otherwise).
+                    // During greeting (m_greetingInFlight=true) we send:
+                    //   - interrupt_response=false  → server won't cancel TTS on user speech
+                    //   - create_response=false     → server won't auto-fire AI's next turn
+                    //                                  on the user's speech_stopped
+                    // After greeting playback completes we resend session.update with both back
+                    // to true (defaults), then manually issue response.create so the AI
+                    // responds to whatever the user said during the greeting (counted, not discarded).
                     turn_detection = m_greetingInFlight
                         ? (object)new
                         {
@@ -256,7 +262,8 @@ namespace CallAutomation.AzureAI.VoiceLive
                             threshold = vadThreshold,
                             prefix_padding_ms = vadPrefixPaddingMs,
                             silence_duration_ms = vadSilenceMs,
-                            interrupt_response = false
+                            interrupt_response = false,
+                            create_response = false
                         }
                         : new
                         {
@@ -658,16 +665,20 @@ namespace CallAutomation.AzureAI.VoiceLive
                                 }
                                 break;
                             }
-                            if (m_greetingInFlight)
+                            if (m_greetingInFlight && !m_greetingDelayScheduled)
                             {
-                                // response.done fires when the SERVER finishes generating audio,
-                                // which is much faster than realtime. The phone is still playing
-                                // the buffered audio. Wait for the playback to actually finish
-                                // before disabling greeting protection — otherwise an early "hi"
-                                // 1-2s into the greeting still kills it.
+                                // Schedule the protection-off session.update for AFTER the
+                                // greeting actually finishes playing on the phone. response.done
+                                // fires when the SERVER finishes generating audio (sub-second),
+                                // not when PSTN has played it (~4s for typical greeting).
                                 //
                                 // Voice Live source audio is 24 kHz pcm16 = 48000 bytes/sec.
                                 // Add a small safety tail (300 ms) for ACS RTP jitter buffer.
+                                //
+                                // m_greetingDelayScheduled prevents this from re-firing on the
+                                // SECOND response.done (e.g. when AI replies to user's mid-greeting
+                                // "yes" right after we re-enable create_response).
+                                m_greetingDelayScheduled = true;
                                 const int VoiceLiveBytesPerSecond = 24000 * 2;
                                 const int SafetyTailMs = 300;
                                 var bytesSnapshot = m_greetingAudioBytesSent;
@@ -681,8 +692,19 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     {
                                         await Task.Delay(playbackMs);
                                         m_greetingInFlight = false;
-                                        m_logger.LogInformation("Greeting playback estimated complete — re-enabling server-side barge-in");
+                                        m_logger.LogInformation("Greeting playback estimated complete — re-enabling normal turn detection");
                                         await UpdateSessionAsync();
+
+                                        // The user may have spoken during the greeting. With
+                                        // create_response=false they were transcribed (item created)
+                                        // but no AI turn was generated. Manually trigger one now so
+                                        // the AI responds to whatever they said — the model has the
+                                        // full conversation context and the prompt's "verify identity
+                                        // first" rule will steer it to the security question.
+                                        await SendMessageAsync(
+                                            JsonSerializer.Serialize(new { type = "response.create" }, s_compactJson),
+                                            CancellationToken.None);
+                                        m_logger.LogInformation("Triggered response.create for post-greeting turn");
                                     }
                                     catch (Exception ex)
                                     {
