@@ -692,19 +692,26 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     {
                                         await Task.Delay(playbackMs);
                                         m_greetingInFlight = false;
+
+                                        // Discard ANY audio the server captured during the greeting.
+                                        // Without this, what the customer said while the greeting was
+                                        // playing is committed as a user turn — and the moment we
+                                        // re-enable normal turn detection, the server replies to it
+                                        // instantly. Net effect: AI feels like it didn't wait.
+                                        // Clearing the buffer makes the AI truly wait for fresh input.
+                                        await SendMessageAsync(
+                                            JsonSerializer.Serialize(new { type = "input_audio_buffer.clear" }, s_compactJson),
+                                            CancellationToken.None);
+                                        m_logger.LogInformation("Cleared input audio buffer (discarding any mid-greeting speech)");
+
                                         m_logger.LogInformation("Greeting playback estimated complete — re-enabling normal turn detection");
                                         await UpdateSessionAsync();
 
-                                        // The user may have spoken during the greeting. With
-                                        // create_response=false they were transcribed (item created)
-                                        // but no AI turn was generated. Manually trigger one now so
-                                        // the AI responds to whatever they said — the model has the
-                                        // full conversation context and the prompt's "verify identity
-                                        // first" rule will steer it to the security question.
-                                        await SendMessageAsync(
-                                            JsonSerializer.Serialize(new { type = "response.create" }, s_compactJson),
-                                            CancellationToken.None);
-                                        m_logger.LogInformation("Triggered response.create for post-greeting turn");
+                                        // Do NOT fire response.create here — let the server's normal
+                                        // turn detection trigger the next AI turn ONLY when the user
+                                        // actually speaks fresh after the greeting. (Previous version
+                                        // called response.create which made the AI reply instantly to
+                                        // whatever was buffered during the greeting.)
                                     }
                                     catch (Exception ex)
                                     {
