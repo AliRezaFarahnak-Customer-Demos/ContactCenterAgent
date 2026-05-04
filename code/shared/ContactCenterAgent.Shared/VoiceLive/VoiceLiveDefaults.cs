@@ -13,8 +13,28 @@ public static class VoiceLiveDefaults
     /// <summary>24 kHz mono 16-bit PCM — what gpt-realtime emits and the lab uses.</summary>
     public const int SampleRate = 24_000;
 
+    // ── Voice Live API version ────────────────────────────────────────────────
+    /// <summary>
+    /// Voice Live realtime endpoint API version. <c>2026-01-01-preview</c> unlocks
+    /// <c>auto_truncate</c> on turn_detection, <c>pre_generated_assistant_message</c>,
+    /// <c>interim_response</c> (cascaded mode only), word-level audio timestamps, and
+    /// the <c>conversation: "none"</c> out-of-band response option. Wire format is
+    /// backwards-compatible with the <c>2025-10-01</c> GA payload we already send, so
+    /// fields we don't set continue to behave as before.
+    /// </summary>
+    public const string ApiVersion = "2026-01-01-preview";
+
     // ── Model / voice ─────────────────────────────────────────────────────────
-    public const string Model = "gpt-realtime";
+    /// <summary>
+    /// Voice Live model deployment name. <c>gpt-realtime-1.5</c> (released 2026-02-23)
+    /// is the newest GA realtime audio-native model in the gpt-realtime family —
+    /// drop-in replacement for <c>gpt-realtime</c> with lower first-token latency and
+    /// improved Danish prosody. Same Pro pricing tier. Override per-environment via
+    /// <c>AzureOpenAI:DeploymentName</c> in that surface's appsettings.json (e.g.
+    /// fall back to <c>gpt-realtime</c> for A/B testing or <c>gpt-realtime-mini</c>
+    /// for the cheaper Basic tier).
+    /// </summary>
+    public const string Model = "gpt-realtime-1.5";
 
     /// <summary>
     /// Production Danish voice. Single source of truth for both danish-voice-lab
@@ -77,7 +97,17 @@ public static class VoiceLiveDefaults
     public const double VadThreshold = 0.3;
 
     public const int VadPrefixPaddingMs = 300;
-    public const int VadSilenceDurationMs = 500;
+
+    /// <summary>
+    /// End-of-turn silence in ms. 200 ms = very snappy turn-taking on PSTN.
+    /// History: 500 ms (matched the danish-voice-lab console sandbox) → 300 ms
+    /// (first latency pass) → 200 ms (current). Each step shaves perceived
+    /// reply latency at the cost of more false barge-in risk on caller
+    /// hesitations ("øhm…", pauses inside number/address reading). If false
+    /// barge-ins become real, raise back toward 300 via
+    /// VoiceLive:Vad:SilenceDurationMsOther in appsettings.json.
+    /// </summary>
+    public const int VadSilenceDurationMs = 200;
 
     // ── Audio cleanup ─────────────────────────────────────────────────────────
     public const string NoiseReductionType = "azure_deep_noise_suppression";

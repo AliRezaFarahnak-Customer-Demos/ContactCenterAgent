@@ -124,12 +124,13 @@ namespace CallAutomation.AzureAI.VoiceLive
                 var azureVoiceLiveEndpoint = configuration.GetValue<string>("AzureOpenAI:Endpoint");
                 ArgumentNullException.ThrowIfNullOrEmpty(azureVoiceLiveEndpoint);
 
-                var voiceLiveModel = configuration.GetValue<string>("AzureOpenAI:DeploymentName") ?? "gpt-realtime";
+                var voiceLiveModel = configuration.GetValue<string>("AzureOpenAI:DeploymentName") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.Model;
+                var apiVersion = configuration.GetValue<string>("AzureOpenAI:ApiVersion") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.ApiVersion;
 
-                m_logger.LogInformation("Connecting to Azure Voice Live: {Endpoint}, model: {Model}", azureVoiceLiveEndpoint, voiceLiveModel);
+                m_logger.LogInformation("Connecting to Azure Voice Live: {Endpoint}, model: {Model}, apiVersion: {ApiVersion}", azureVoiceLiveEndpoint, voiceLiveModel, apiVersion);
 
                 var azureVoiceLiveWebsocketUrl = new Uri(
-                    $"{azureVoiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version=2025-10-01&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}");
+                    $"{azureVoiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version={apiVersion}&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}");
 
                 // Try connecting with the cached token first. If we get a 401 (stale token
                 // after container restart / deployment), force-refresh and retry once.
@@ -265,6 +266,13 @@ namespace CallAutomation.AzureAI.VoiceLive
                     // After greeting playback completes we resend session.update with both back
                     // to true (defaults), then manually issue response.create so the AI
                     // responds to whatever the user said during the greeting (counted, not discarded).
+                    // auto_truncate (added in Voice Live 2026-01-01-preview): when the caller
+                    // barges in mid-AI-speech, the server trims the recorded assistant transcript
+                    // to what was actually played out over PSTN before interruption. Without it,
+                    // history shows the FULL generated text and follow-up turns can reference
+                    // sentences the caller never heard. No latency cost; correctness-only fix.
+                    // Only meaningful AFTER the greeting (greeting itself is barge-in protected
+                    // via interrupt_response=false), so we set it on the post-greeting payload.
                     turn_detection = m_greetingInFlight
                         ? (object)new
                         {
@@ -280,7 +288,8 @@ namespace CallAutomation.AzureAI.VoiceLive
                             type = vadType,
                             threshold = vadThreshold,
                             prefix_padding_ms = vadPrefixPaddingMs,
-                            silence_duration_ms = vadSilenceMs
+                            silence_duration_ms = vadSilenceMs,
+                            auto_truncate = true
                         },
                     // No max_response_output_tokens cap — danish-voice-lab doesn't set one and
                     // we want identical behaviour. The system prompt's "1-2 sentences" rule

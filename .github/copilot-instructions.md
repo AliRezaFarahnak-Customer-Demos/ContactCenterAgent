@@ -82,6 +82,11 @@ Hard rules: headlines bold + left-aligned only · never `font-mono` in productio
 These are workflow hazards that don't depend on which model/voice/version is current:
 
 - **OIDC app reg gets nuked nightly** in MngEnv tenants. If `azure/login` fails with "Not all values are present", re-run `./scripts/setup-oidc.ps1` (rewrites `AZURE_CLIENT_ID` / `TENANT_ID` / `SUBSCRIPTION_ID` on the `production` GitHub environment). Allow ~2 min for RBAC to propagate before the next deploy.
+- **Easy Auth on `ca-admin-chat` is locked to a single user.** Auth config (set via `az rest PUT` to `authConfigs/current`, NOT `az containerapp auth microsoft update` — that command wipes the registration block and leaves the sidecar crash-looping with "upstream connect error / Connection refused"):
+  - `openIdIssuer` pinned to the tenant (`https://login.microsoftonline.com/<tenantId>/v2.0`), NOT `/common/`. The auto-provisioned default uses `/common/` + `signInAudience=AzureADandPersonalMicrosoftAccount` and that combo breaks the auth sidecar.
+  - `defaultAuthorizationPolicy.allowedApplications: []` (the auto-provisioned default lists the app's own clientId there, which forces app-only tokens and rejects all user logins).
+  - `defaultAuthorizationPolicy.allowedPrincipals.identities: ["<my-user-oid>"]` so only the listed user(s) get past `/.auth`. Add more OIDs here to grant access; don't open it up tenant-wide.
+  - Symptom of a broken auth sidecar (vs a crashed app): `az containerapp revision list` shows the app revision Running with replicas=1, but the URL returns Envoy's "upstream connect error or disconnect/reset before headers … Connection refused". Fix is always to re-PUT the full authConfig JSON, never to patch individual fields with `--set` or `auth microsoft update`.
 - **CI must write `.version.json` itself** before `docker build` — the file isn't committed; locally it comes from the azd prepackage hook. Build job needs `fetch-depth: 0` so `git rev-list --count HEAD` returns the real count.
 - **Test the right call.** When verifying a deploy, check the App Insights `Session accepted by server: …` trace timestamp against the GitHub Actions deploy completion time. A call placed before the new revision rolled out will hit the old container and look broken.
 - **Voice Live silently falls back to defaults** if you send unsupported fields (e.g. `temperature` on `azure-standard` voices). After any voice/STT change, verify via the App Insights `Session accepted by server` trace that the `voice` / `input_audio_transcription` block in `session.updated` matches what you sent.
@@ -184,6 +189,16 @@ The `:DragonHDOmniLatestNeural` suffix on the `name` is what flips the server in
 ## Deferred Voice Live customizations (not yet wired)
 
 Audited against the [official Voice Live customization docs](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to-customize) — these official options are NOT in the codebase yet. Listed in order of ROI for Norlys / Danish PSTN. Pick up when there's a complaint that maps to one of them.
+
+**Add when we wire real backend tools / DB lookups:**
+
+- **TÆNKEPAUSE prompt section** ("et øjeblik, lad mig lige tjekke") — was added then removed because the agent currently has no tools other than `hang_up`, so there's nothing to wait on. Adding the hint without a real wait reason just teaches the model to insert unnecessary verbal filler. The block to re-add (under `# LYT` in each persona in `personas.json` AND `code/admin-chat/server/personas.json`) is:
+  ```
+  # TÆNKEPAUSE — UNDGÅ STILHED
+  - Hvis du har brug for et øjeblik til at tænke eller slå noget op, sig det HØJT i stedet for at være tavs. Eksempler: "et øjeblik, lad mig lige tjekke," "hmm, lad mig se," "så lige et sekund."
+  - Brug det MAKSIMALT en gang i ny og næ — ikke i hver tur. Stilhed på telefon er værre end en kort verbal pause; hyppige fyldord er værre end stilhed.
+  ```
+  Trigger: as soon as we add a function-calling tool that can take >300 ms (e.g. `lookup_customer_account(phone)`, billing lookup, knowledge-base search). Re-add then. Cheaper alternative when we get there: Voice Live's native `interim_response` feature — but it's docs-confirmed incompatible with realtime audio models, so the prompt-driven version above is what we'll actually use.
 
 1. **`custom_lexicon_url`** on `voice` block (TTS pronunciation control) — host an SSML-format lexicon XML at a public URL, point `RealtimeAzureStandardVoice.custom_lexicon_url` at it. Use case: force correct pronunciation of "Norlys", Danish street-name suffixes (-vej, -gade, -allé), postal-code patterns, common foreign brand names. Lower effort than Custom Voice; biggest fix for branded mispronunciations on PSTN. Same lexicon works for both standard neural and HD Omni. Docs: [custom lexicon for text to speech](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-pronunciation#custom-lexicon).
 2. **`prefer_locales: ["da-DK", "en-US"]`** on `voice` block — when Christel emits an embedded English word inside a Danish sentence (brand name, technical term), this pins the _secondary_ English accent to American. Without it the accent on the foreign word is unpredictable. One-line addition to `BuildVoiceConfig` / `BuildAzureStandardVoice`; pair with a new `Voice:PreferLocales` config key.
