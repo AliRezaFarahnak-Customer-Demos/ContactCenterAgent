@@ -309,8 +309,8 @@ namespace CallAutomation.AzureAI.VoiceLive
                                           "polite wrap-ups ('thanks, that's all', 'tak, det var det', 'no, nothing more', 'nej det var det', 'okay vi snakkes'), " +
                                           "requests to leave ('I have to go', 'jeg skal videre', 'jeg er nødt til at løbe'), or any clear sign that the caller wants to hang up. " +
                                           "Trust the caller. If they’ve indicated they’re done, do NOT keep pushing topics, do NOT ask 'are you sure?', do NOT try one more time to be helpful. " +
-                                          "MANDATORY: BEFORE calling this tool, you MUST first speak a brief Norlys farewell in the caller's language — thank them for being a Norlys customer and wish them a good day (e.g. 'Tak fordi du er kunde hos Norlys — hav en god dag, farvel.'). Only after you have spoken that line, call hang_up. " +
-                                          "You may also call this tool if the call truly cannot proceed (wrong number, voicemail detected) — same farewell rule applies. " +
+                                          "MANDATORY: Speak the EXACT farewell from the # AFSLUTNING section of your system prompt as your final spoken line, and ONLY THEN call hang_up. Do NOT say two farewells. Do NOT add 'farvel' or any extra words after the AFSLUTNING line. " +
+                                          "You may also call this tool if the call truly cannot proceed (wrong number, voicemail detected) — speak the same AFSLUTNING farewell first. " +
                                           "Only avoid calling it when the caller is clearly still engaged in the conversation (asking questions, sharing information, mid-sentence).",
                             parameters = new
                             {
@@ -666,18 +666,24 @@ namespace CallAutomation.AzureAI.VoiceLive
                                 });
 
                                 // Store the hang-up intent — we'll disconnect AFTER the farewell audio completes.
-                                // Capture the response_id of the response that contains this tool call so
-                                // we can ignore its imminent response.done and only act on the NEXT one
-                                // (which will be the farewell).
+                                // The MANDATORY rule in the hang_up tool description and the
+                                // # AFSLUTNING block in personas.json BOTH instruct the AI to speak the
+                                // farewell BEFORE calling hang_up. With gpt-realtime-1.5 this is reliable,
+                                // so the farewell audio has ALREADY played on the line by the time we get
+                                // here. We just need to capture the response_id of the (audio-less) tool-call
+                                // response so we can ignore its imminent response.done — the disconnect
+                                // happens via the safety-net Task.Delay below.
                                 m_pendingHangUp = true;
                                 m_pendingHangUpReason = args ?? "AI initiated hang up";
                                 m_hangUpResponseId = data.ContainsKey("response_id") ? data["response_id"]?.ToString() : null;
                                 m_farewellAudioBytes = 0;
                                 m_farewellDisconnectScheduled = false;
 
-                                // Acknowledge the tool call with a proper JSON tool result.
-                                // (Earlier versions stuffed instructions into `output` — that's not
-                                // how Realtime API tool results work. Instructions go on response.create.)
+                                // Acknowledge the tool call with a JSON tool result. We do NOT chain a
+                                // response.create asking for ANOTHER farewell — that was the cause of the
+                                // double goodbye ("Tak for at være kunde hos Norlys ... [tool] ... Tak fordi
+                                // du er kunde hos Norlys ..."). Trust the persona / tool description to have
+                                // already produced the farewell.
                                 var toolOutput = new
                                 {
                                     type = "conversation.item.create",
@@ -689,39 +695,27 @@ namespace CallAutomation.AzureAI.VoiceLive
                                     }
                                 };
                                 await SendMessageAsync(JsonSerializer.Serialize(toolOutput), CancellationToken.None);
+                                m_logger.LogInformation("hang_up acknowledged — will disconnect on the safety-net timer (hang_up response_id: {ResponseId})", m_hangUpResponseId ?? "<unknown>");
 
-                                // Force a new response with explicit per-response instructions that
-                                // OVERRIDE the session prompt for just this turn. This is the reliable
-                                // way to make the model say a specific line — far more robust than
-                                // hoping the session prompt's MANDATORY rule sticks under barge-in pressure.
-                                var farewellLang = !string.IsNullOrEmpty(m_language) ? m_language : "Danish";
-                                var farewellInstructions = $"Speak ONE short, warm farewell in {farewellLang}. Thank the caller for being a Norlys customer and wish them a good day. Use exactly: 'Tak fordi du er kunde hos Norlys, hav en rigtig god dag, farvel.' (translate to {farewellLang} if not Danish). Do NOT say anything else. Do NOT ask any questions. Do NOT call any tools.";
-                                var farewellResponse = new
-                                {
-                                    type = "response.create",
-                                    response = new
-                                    {
-                                        modalities = new[] { "audio", "text" },
-                                        instructions = farewellInstructions
-                                    }
-                                };
-                                await SendMessageAsync(JsonSerializer.Serialize(farewellResponse), CancellationToken.None);
-                                m_logger.LogInformation("Farewell response triggered — will disconnect after farewell audio completes (hang_up response_id: {ResponseId})", m_hangUpResponseId ?? "<unknown>");
-
-                                // Safety net: if Voice Live never emits a farewell response.done
-                                // (silent failure, error, etc.), force-disconnect after a max wait
-                                // so the call doesn't hang open indefinitely.
+                                // Safety net: the AI has already spoken its farewell BEFORE calling hang_up
+                                // (per the MANDATORY rule in the tool description). Give PSTN time to actually
+                                // play out the trailing audio, then disconnect. ~6s covers a typical Norlys
+                                // farewell ("Tak for at være kunde hos Norlys, jeg ønsker dig en dejlig dag.")
+                                // plus ACS RTP jitter buffer. If we ever observe the AI calling hang_up WITHOUT
+                                // a preceding farewell on real calls, the right fix is to strengthen the prompt
+                                // — NOT to chain a second response.create here (that's what was producing the
+                                // double goodbye).
                                 _ = Task.Run(async () =>
                                 {
-                                    const int FarewellMaxWaitMs = 12000;
-                                    await Task.Delay(FarewellMaxWaitMs);
+                                    const int FarewellPlaybackMs = 6000;
+                                    await Task.Delay(FarewellPlaybackMs);
                                     if (m_pendingHangUp && !m_farewellDisconnectScheduled)
                                     {
-                                        m_logger.LogWarning("Farewell did not complete within {MaxWait}ms — forcing disconnect", FarewellMaxWaitMs);
                                         m_farewellDisconnectScheduled = true;
+                                        m_logger.LogInformation("Disconnecting after {Delay}ms farewell-playback wait", FarewellPlaybackMs);
                                         if (m_onHangUp != null)
                                         {
-                                            await m_onHangUp(m_pendingHangUpReason ?? "AI initiated hang up — farewell timeout");
+                                            await m_onHangUp(m_pendingHangUpReason ?? "AI initiated hang up");
                                         }
                                     }
                                 });
