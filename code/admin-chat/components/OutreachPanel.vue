@@ -122,11 +122,11 @@ onBeforeUnmount(() => timer && clearInterval(timer));
 
 <template>
   <aside
-    class="hidden flex-col h-full bg-white rounded-xl overflow-hidden"
+    class="flex flex-col min-h-0 bg-white rounded-xl overflow-hidden"
     :class="
       props.expanded
-        ? 'lg:flex flex-1 min-w-0'
-        : 'xl:flex w-[26rem] 2xl:w-[32rem] shrink-0'
+        ? 'flex-1 min-w-0'
+        : 'flex-1 min-w-0 lg:hidden xl:flex xl:flex-none xl:w-[26rem] 2xl:w-[32rem]'
     "
   >
     <div

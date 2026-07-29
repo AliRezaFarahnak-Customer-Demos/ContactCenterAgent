@@ -78,7 +78,7 @@ const activeCount = computed(
 
 <template>
   <div
-    class="flex h-dvh w-screen bg-norlys-sand text-norlys-ink font-body gap-3 p-3 pt-[3.75rem]"
+    class="flex flex-col lg:flex-row h-dvh w-screen bg-norlys-sand text-norlys-ink font-body gap-3 p-3 pt-[3.75rem] overflow-hidden"
   >
     <!-- ============== TOP BAR ============== -->
     <!-- Per Norlys CVI: logo sits in the top-right corner of the layout. -->
