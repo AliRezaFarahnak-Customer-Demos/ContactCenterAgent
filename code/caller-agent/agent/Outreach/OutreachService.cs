@@ -378,13 +378,24 @@ public sealed class OutreachService
     public Task HandleInboundEmailAsync(string from, string subject, string body) =>
         HandleInboundAsync("email", from, string.IsNullOrWhiteSpace(subject) ? body : $"{subject}\n\n{body}");
 
-    private async Task HandleInboundAsync(string channel, string from, string text)
+    /// <summary>
+    /// Thread an emailed reply onto an existing outreach. A mailbox also receives unrelated
+    /// human mail, so unlike SMS to a dedicated number, mail from an address we never contacted
+    /// is ignored instead of being captured as a new customer. Returns true when it was threaded.
+    /// </summary>
+    public async Task<bool> TryHandleInboundEmailAsync(string from, string subject, string body)
     {
         var record = await _store.FindLatestAwaitingReplyAsync(from);
-        if (record is null)
-        {
+        if (record is null) return false;
+        await AppendInboundAsync(record, "email", string.IsNullOrWhiteSpace(subject) ? body : $"{subject}\n\n{body}");
+        return true;
+    }
+
+    private async Task HandleInboundAsync(string channel, string from, string text)
+    {
+        var record = await _store.FindLatestAwaitingReplyAsync(from)
             // Unmatched inbound — still capture it so nothing is lost in the timeline.
-            record = new OutreachRecord
+            ?? new OutreachRecord
             {
                 CustomerId = from,
                 Phone = channel == "sms" ? from : null,
@@ -392,8 +403,12 @@ public sealed class OutreachService
                 Channel = channel,
                 Status = "completed"
             };
-        }
 
+        await AppendInboundAsync(record, channel, text);
+    }
+
+    private async Task AppendInboundAsync(OutreachRecord record, string channel, string text)
+    {
         record.Interactions.Add(new Interaction { Channel = channel, Direction = "inbound", Text = text });
         record.Reply = text;
         record.Status = "completed";

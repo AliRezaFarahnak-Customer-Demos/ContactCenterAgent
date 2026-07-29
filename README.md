@@ -155,6 +155,8 @@ Nested keys use `:` in appsettings and `__` (double underscore) as environment v
 | `Graph:PollSeconds`              | Inbox poll interval for email replies (default 30, min 10).  |
 | `AzureOpenAI:Endpoint`           | Azure OpenAI endpoint. Also drafts SMS/email bodies from an intent. |
 | `Cosmos:Endpoint`                | Cosmos DB (conversation store); in-memory fallback if unset. |
+| `RESOURCE_NAME_SUFFIX`           | Suffix for globally-unique names. Empty = derived from the subscription id (lets any subscription deploy). `none` = original unsuffixed names. |
+| `ACS_DATA_LOCATION`              | ACS data residency, e.g. `Europe` for EU phone numbers. Default `United States`. |
 | `Outreach:AllowSimulatedReplies` | Set `false` in prod to disable the demo reply injector.      |
 
 Set a secret example (Container Apps):
@@ -212,7 +214,7 @@ The one step that can't be scripted: Danish mobile numbers need **carrier/regula
 | Requirement                                            | Where it lives                                                                                                                                                                            |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Callable **REST endpoint**                             | `POST /api/outreach`, `GET /api/outreach/{id}`, `GET /api/channels`, `GET /api/customers`                                                                                                 |
-| **MCP server** for other AI agents                     | `/mcp` (anonymous, Streamable HTTP) — `start_outreach`, `get_outreach_result`, `list_channels`                                                                                            |
+| **MCP server** for other AI agents                     | `/mcp` (anonymous, Streamable HTTP) — `start_outreach`, `wait_for_outreach_result`, `get_outreach_result`, `send_followup`, `list_outreach`, `list_customers`, `get_customer_timeline`, `list_channels`, `list_personas` |
 | Input: customer, channel, message/intent **+ context** | `OutreachRequest` (REST) and the `context` parameter on `start_outreach` (MCP)                                                                                                            |
 | **Structured output** back to the calling agent        | `OutreachResult` — reply, collected, metrics, summary, outcome, topics, full interaction timeline                                                                                         |
 | **Async / callback** for slow channels                 | `callbackUrl` (pushed on completion) + `awaiting_reply` status for polling                                                                                                                |

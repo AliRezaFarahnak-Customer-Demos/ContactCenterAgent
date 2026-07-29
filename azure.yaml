@@ -61,6 +61,10 @@ hooks:
   postprovision:
     shell: pwsh
     run: |
+      # The scripts below drive the az CLI, whose active subscription is ambient and
+      # drifts independently of azd. Pin it to the one azd just deployed into.
+      if ($env:AZURE_SUBSCRIPTION_ID) { az account set -s $env:AZURE_SUBSCRIPTION_ID }
+
       $rg = "rg-contactcenteragent"; $acs = "acs-contactcenteragent"; $ca = "ca-caller-agent"
       $country = if ($env:PHONE_COUNTRY) { $env:PHONE_COUNTRY.ToUpper() } else { "US" }
       Write-Host "[postprovision] Provisioning ACS number(s) for country: $country"
@@ -115,7 +119,9 @@ hooks:
 
   postdeploy:
     shell: pwsh
-    run: ./scripts/setup-eventgrid.ps1 -ResourceGroup "rg-contactcenteragent" -SystemTopicName "evgt-contactcenteragent-acs" -ContainerAppName "ca-caller-agent"
+    run: |
+      if ($env:AZURE_SUBSCRIPTION_ID) { az account set -s $env:AZURE_SUBSCRIPTION_ID }
+      ./scripts/setup-eventgrid.ps1 -ResourceGroup "rg-contactcenteragent" -SystemTopicName "evgt-contactcenteragent-acs" -ContainerAppName "ca-caller-agent"
     interactive: false
     continueOnError: false
 

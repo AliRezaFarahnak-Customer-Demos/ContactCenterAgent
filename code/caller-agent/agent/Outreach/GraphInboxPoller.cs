@@ -14,8 +14,9 @@ namespace CallerAgent.Outreach;
 /// container app's managed identity in Azure, az login locally); that identity needs the
 /// Graph application permission <c>Mail.ReadWrite</c> — see scripts/grant-graph-mail-permissions.ps1.
 ///
-/// Dedupe strategy: only unread messages are read, and each is marked read once handled.
-/// That survives restarts without persisting a cursor.
+/// The mailbox may be a real person's, so this is deliberately conservative: it only looks at
+/// mail that arrives AFTER startup, and only consumes (and marks read) messages that thread
+/// onto an outreach we started. Everything else is left untouched and unread.
 /// </summary>
 public sealed class GraphInboxPoller : BackgroundService
 {
@@ -27,6 +28,8 @@ public sealed class GraphInboxPoller : BackgroundService
     private readonly TokenCredential _credential = new DefaultAzureCredential();
     private readonly string? _mailbox;
     private readonly TimeSpan _interval;
+    private readonly HashSet<string> _seen = new();
+    private readonly DateTimeOffset _since = DateTimeOffset.UtcNow;
 
     public GraphInboxPoller(OutreachService outreach, IConfiguration config, ILogger<GraphInboxPoller> logger)
     {
@@ -70,8 +73,10 @@ public sealed class GraphInboxPoller : BackgroundService
         var token = await _credential.GetTokenAsync(
             new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" }), ct);
 
+        var since = _since.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var filter = Uri.EscapeDataString($"isRead eq false and receivedDateTime gt {since}");
         var url = $"{GraphBase}/users/{Uri.EscapeDataString(_mailbox!)}/mailFolders/inbox/messages" +
-                  "?$filter=isRead%20eq%20false&$top=10&$orderby=receivedDateTime%20asc" +
+                  $"?$filter={filter}&$top=25&$orderby=receivedDateTime%20asc" +
                   "&$select=id,subject,bodyPreview,from";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -91,21 +96,21 @@ public sealed class GraphInboxPoller : BackgroundService
         foreach (var m in messages.EnumerateArray())
         {
             var id = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-            if (string.IsNullOrEmpty(id)) continue;
+            if (string.IsNullOrEmpty(id) || !_seen.Add(id)) continue;
 
             var from = m.TryGetProperty("from", out var f)
                        && f.TryGetProperty("emailAddress", out var addr)
                        && addr.TryGetProperty("address", out var a)
                 ? a.GetString() : null;
+            if (string.IsNullOrWhiteSpace(from)) continue;
+
             var subject = m.TryGetProperty("subject", out var s) ? s.GetString() ?? "" : "";
             var body = m.TryGetProperty("bodyPreview", out var b) ? b.GetString() ?? "" : "";
 
-            if (!string.IsNullOrWhiteSpace(from))
-            {
-                _logger.LogInformation("Inbound email via Graph from {From}", from);
-                await _outreach.HandleInboundEmailAsync(from!, subject, body);
-            }
+            // Unrelated mail is left unread and untouched — this may be a real person's mailbox.
+            if (!await _outreach.TryHandleInboundEmailAsync(from!, subject, body)) continue;
 
+            _logger.LogInformation("Threaded email reply from {From}", from);
             await MarkReadAsync(id!, token.Token, ct);
         }
     }
