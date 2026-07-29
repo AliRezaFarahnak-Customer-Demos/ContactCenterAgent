@@ -231,57 +231,14 @@ public sealed class OutreachService
                     break;
 
                 case "sms":
-                    if (!SmsEnabled || string.IsNullOrWhiteSpace(req.Customer.Phone))
-                        throw new InvalidOperationException("SMS-kanalen er ikke konfigureret, eller der mangler et telefonnummer.");
-                    var toSms = req.Customer.Phone!.Trim();
-
-                    // Azure-native Messaging Connect reaches Denmark (+45) and 190+ countries — prefer it when configured.
-                    if (MessagingConnectEnabled)
-                    {
-                        await SendViaMessagingConnectAsync(toSms, messageText);
-                        record.Interactions.Add(new Interaction { Channel = "sms", Direction = "outbound", Text = messageText });
-                        // Mark awaiting_reply so a reply (real two-way long code, or a simulated demo reply) threads here.
-                        record.Status = "awaiting_reply";
-                        break;
-                    }
-
-                    // The only sender authorized on this US-data-location resource is the toll-free
-                    // NUMBER; the alphanumeric sender ID returns 401 here, so prefer the number.
-                    string smsFrom;
-                    if (!string.IsNullOrWhiteSpace(_smsNumber)) smsFrom = _smsNumber!;
-                    else if (!string.IsNullOrWhiteSpace(_smsSenderId)) smsFrom = _smsSenderId!;
-                    else throw new InvalidOperationException("Ingen SMS-afsender konfigureret.");
-                    // Replies only route back for US/CA (+1) on our toll-free; other countries are one-way.
-                    var oneWay = !toSms.StartsWith("+1");
-                    Azure.Response<SmsSendResult> smsResp;
-                    try
-                    {
-                        smsResp = await _smsClient!.SendAsync(from: smsFrom, to: toSms, message: messageText);
-                    }
-                    catch (Azure.RequestFailedException rfe)
-                    {
-                        throw new InvalidOperationException(
-                            $"SMS kunne ikke sendes fra '{smsFrom}' (HTTP {rfe.Status}). " +
-                            (toSms.StartsWith("+1") ? "" : "Dette US-baserede ACS-resource sender to-vejs SMS til US/Canada; SMS til andre lande (fx +45) kræver et lokalt afsendernummer."));
-                    }
-                    if (!smsResp.Value.Successful)
-                        throw new InvalidOperationException($"SMS afvist af ACS (HTTP {smsResp.Value.HttpStatusCode}): {smsResp.Value.ErrorMessage}");
+                    record.Status = await DeliverAsync("sms", req.Customer.Phone, null, messageText, "")
+                        ? "awaiting_reply" : "completed";
                     record.Interactions.Add(new Interaction { Channel = "sms", Direction = "outbound", Text = messageText });
-                    record.Status = oneWay ? "completed" : "awaiting_reply";
                     break;
 
                 case "email":
-                    if (!EmailEnabled || string.IsNullOrWhiteSpace(req.Customer.Email))
-                        throw new InvalidOperationException("Email channel not available or no email address provided.");
                     var subject = req.Context is not null && req.Context.TryGetValue("subject", out var s) ? s : "Norlys – vi vil gerne i kontakt";
-                    // Graph sends from a real mailbox and gets real replies — prefer it when configured.
-                    if (GraphEmailEnabled)
-                        await SendViaGraphAsync(req.Customer.Email!, subject, messageText);
-                    else
-                        await _emailClient!.SendAsync(WaitUntil.Started, new EmailMessage(
-                            senderAddress: _emailSender,
-                            content: new EmailContent(subject) { PlainText = messageText },
-                            recipients: new EmailRecipients(new[] { new EmailAddress(req.Customer.Email) })));
+                    await DeliverAsync("email", null, req.Customer.Email, messageText, subject);
                     record.Interactions.Add(new Interaction { Channel = "email", Direction = "outbound", Text = $"{subject}\n\n{messageText}" });
                     record.Status = "awaiting_reply";
                     break;
@@ -307,6 +264,109 @@ public sealed class OutreachService
             { "outreach.channel", channel },
             { "outreach.status", record.Status },
             { "outreach.id", record.Id }
+        });
+        return record.ToResult();
+    }
+
+    // -----------------------------------------------------------------------
+    // Delivery — shared by StartAsync and SendFollowUpAsync.
+    // Returns true when a customer reply can route back to us on this channel.
+    // -----------------------------------------------------------------------
+    private async Task<bool> DeliverAsync(string channel, string? phone, string? email, string text, string subject)
+    {
+        switch (channel)
+        {
+            case "sms":
+                if (!SmsEnabled || string.IsNullOrWhiteSpace(phone))
+                    throw new InvalidOperationException("SMS-kanalen er ikke konfigureret, eller der mangler et telefonnummer.");
+                var to = phone!.Trim();
+
+                // Azure-native Messaging Connect reaches Denmark (+45) and 190+ countries — prefer it when configured.
+                if (MessagingConnectEnabled)
+                {
+                    await SendViaMessagingConnectAsync(to, text);
+                    return true;
+                }
+
+                // The only sender authorized on this US-data-location resource is the toll-free
+                // NUMBER; the alphanumeric sender ID returns 401 here, so prefer the number.
+                string smsFrom;
+                if (!string.IsNullOrWhiteSpace(_smsNumber)) smsFrom = _smsNumber!;
+                else if (!string.IsNullOrWhiteSpace(_smsSenderId)) smsFrom = _smsSenderId!;
+                else throw new InvalidOperationException("Ingen SMS-afsender konfigureret.");
+
+                Azure.Response<SmsSendResult> smsResp;
+                try
+                {
+                    smsResp = await _smsClient!.SendAsync(from: smsFrom, to: to, message: text);
+                }
+                catch (Azure.RequestFailedException rfe)
+                {
+                    throw new InvalidOperationException(
+                        $"SMS kunne ikke sendes fra '{smsFrom}' (HTTP {rfe.Status}). " +
+                        (to.StartsWith("+1") ? "" : "Dette US-baserede ACS-resource sender to-vejs SMS til US/Canada; SMS til andre lande (fx +45) kræver et lokalt afsendernummer."));
+                }
+                if (!smsResp.Value.Successful)
+                    throw new InvalidOperationException($"SMS afvist af ACS (HTTP {smsResp.Value.HttpStatusCode}): {smsResp.Value.ErrorMessage}");
+                // Replies only route back for US/CA (+1) on our toll-free; other countries are one-way.
+                return to.StartsWith("+1");
+
+            case "email":
+                if (!EmailEnabled || string.IsNullOrWhiteSpace(email))
+                    throw new InvalidOperationException("Email channel not available or no email address provided.");
+                // Graph sends from a real mailbox and gets real replies — prefer it when configured.
+                if (GraphEmailEnabled)
+                    await SendViaGraphAsync(email!, subject, text);
+                else
+                    await _emailClient!.SendAsync(WaitUntil.Started, new EmailMessage(
+                        senderAddress: _emailSender,
+                        content: new EmailContent(subject) { PlainText = text },
+                        recipients: new EmailRecipients(new[] { new EmailAddress(email) })));
+                return true;
+
+            default:
+                throw new InvalidOperationException($"Kanalen '{channel}' understøtter ikke direkte beskeder.");
+        }
+    }
+
+    /// <summary>
+    /// Send a follow-up on an existing outreach thread — e.g. the written recap of a voice call,
+    /// or a reply to the customer's inbound message. Keeps everything on the same record so the
+    /// cross-channel timeline stays whole.
+    /// </summary>
+    public async Task<OutreachResult?> SendFollowUpAsync(string outreachId, string message, string? channel = null, string? subject = null)
+    {
+        var record = await _store.FindByIdAsync(outreachId);
+        if (record is null) return null;
+
+        // Voice can't carry a written follow-up, so fall back to whichever text channel we can reach.
+        var ch = (channel ?? (record.Channel == "voice"
+            ? (SmsEnabled && !string.IsNullOrWhiteSpace(record.Phone) ? "sms" : "email")
+            : record.Channel)).Trim().ToLowerInvariant();
+        var subj = string.IsNullOrWhiteSpace(subject) ? "Norlys – opfølgning" : subject!;
+
+        try
+        {
+            var canReply = await DeliverAsync(ch, record.Phone, record.Email, message, subj);
+            record.Interactions.Add(new Interaction
+            {
+                Channel = ch,
+                Direction = "outbound",
+                Text = ch == "email" ? $"{subj}\n\n{message}" : message
+            });
+            record.Status = canReply ? "awaiting_reply" : "completed";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Follow-up failed for outreach {Id} on {Channel}", outreachId, ch);
+            record.Status = "failed";
+            record.Reply = ex.Message;
+        }
+
+        await _store.UpsertAsync(record);
+        _telemetry?.TrackEvent("OutreachFollowUp", new Dictionary<string, string>
+        {
+            { "outreach.channel", ch }, { "outreach.status", record.Status }, { "outreach.id", record.Id }
         });
         return record.ToResult();
     }
@@ -394,6 +454,47 @@ public sealed class OutreachService
     // Reads
     // -----------------------------------------------------------------------
     public async Task<OutreachResult?> GetResultAsync(string id) => (await _store.FindByIdAsync(id))?.ToResult();
+
+    public async Task<IReadOnlyList<OutreachResult>> ListRecentAsync(int limit = 50) =>
+        (await _store.ListRecentAsync(Math.Clamp(limit, 1, 200))).Select(r => r.ToResult()).ToList();
+
+    public async Task<IReadOnlyList<OutreachResult>> GetCustomerTimelineAsync(string customerId) =>
+        (await _store.ListByCustomerAsync(customerId)).Select(r => r.ToResult()).ToList();
+
+    public async Task<IReadOnlyList<CustomerSummary>> ListCustomersAsync()
+    {
+        var all = await _store.ListRecentAsync(500);
+        return all.GroupBy(r => r.CustomerId).Select(g => new CustomerSummary(
+            CustomerId: g.Key,
+            Name: g.Select(x => x.CustomerName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
+            Phone: g.Select(x => x.Phone).FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)),
+            Email: g.Select(x => x.Email).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e)),
+            Channels: g.Select(x => x.Channel).Distinct().ToArray(),
+            OutreachCount: g.Count(),
+            LastActivity: g.Max(x => x.UpdatedUtc),
+            LastOutcome: g.OrderByDescending(x => x.UpdatedUtc).Select(x => x.Outcome).FirstOrDefault()))
+            .OrderByDescending(c => c.LastActivity).ToList();
+    }
+
+    public IReadOnlyList<PersonaSummary> ListPersonas() =>
+        s_personas.Value.Select(p => new PersonaSummary(p.Id, p.Label, p.Description, p.LanguageCode)).ToList();
+
+    /// <summary>
+    /// Block until the outreach reaches a terminal status or the timeout elapses, so an agent
+    /// can await a voice call or an SMS reply without running its own poll loop.
+    /// </summary>
+    public async Task<OutreachResult?> WaitForResultAsync(string id, int timeoutSeconds, CancellationToken ct = default)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(timeoutSeconds, 5, 600));
+        while (true)
+        {
+            var record = await _store.FindByIdAsync(id);
+            if (record is null) return null;
+            if (record.Status is "completed" or "failed" or "no_answer" || DateTimeOffset.UtcNow >= deadline)
+                return record.ToResult();
+            await Task.Delay(TimeSpan.FromSeconds(3), ct);
+        }
+    }
 
     public IReadOnlyList<ChannelCapability> ListChannels() => new[]
     {

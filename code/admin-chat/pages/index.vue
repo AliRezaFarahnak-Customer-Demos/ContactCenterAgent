@@ -1,6 +1,9 @@
 <script setup lang="ts">
-const { sessions, addSession, removeSession, clearEnded, toggleExpanded } =
+const { sessions, addSession, removeSession, clearEnded, toggleExpanded, watchCallLog } =
   useCallSessions();
+
+// Calls placed by an agent through the MCP, or rung in by a customer, show up here too.
+onMounted(() => watchCallLog());
 
 const config = useRuntimeConfig();
 const callError = ref<string | null>(null);

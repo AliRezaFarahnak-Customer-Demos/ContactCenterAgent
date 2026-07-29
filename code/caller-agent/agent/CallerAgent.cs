@@ -872,11 +872,24 @@ app.MapGet("/api/calls/history", (ILogger<Program> logger) =>
 app.MapPost("/api/outreach", async ([FromBody] OutreachRequest request, OutreachService outreach) =>
     Results.Ok(await outreach.StartAsync(request)));
 
+app.MapGet("/api/outreach", async (int? limit, OutreachService outreach) =>
+    Results.Ok(await outreach.ListRecentAsync(limit ?? 50)));
+
 app.MapGet("/api/outreach/{id}", async (string id, OutreachService outreach) =>
 {
     var result = await outreach.GetResultAsync(id);
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
+
+app.MapPost("/api/outreach/{id}/followup", async (string id, [FromBody] FollowUpRequest req, OutreachService outreach) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Message))
+        return Results.BadRequest(new { error = "message is required" });
+    var result = await outreach.SendFollowUpAsync(id, req.Message, req.Channel, req.Subject);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
+
+app.MapGet("/api/personas", (OutreachService outreach) => Results.Ok(outreach.ListPersonas()));
 
 // Demo/testing aid: inject a customer "reply" into a thread using the SAME inbound code path as a real
 // Event Grid reply. Lets the dashboard show a two-way thread when a live carrier inbound isn't available
@@ -897,28 +910,11 @@ app.MapPost("/api/outreach/simulate-reply", async ([FromBody] SimulateReplyReque
 
 app.MapGet("/api/channels", (OutreachService outreach) => Results.Ok(outreach.ListChannels()));
 
-app.MapGet("/api/customers", async (OutreachStore store) =>
-{
-    var all = await store.ListRecentAsync(500);
-    var customers = all.GroupBy(r => r.CustomerId).Select(g => new
-    {
-        customerId = g.Key,
-        name = g.Select(x => x.CustomerName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
-        phone = g.Select(x => x.Phone).FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)),
-        email = g.Select(x => x.Email).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e)),
-        channels = g.Select(x => x.Channel).Distinct().ToArray(),
-        outreachCount = g.Count(),
-        lastActivity = g.Max(x => x.UpdatedUtc),
-        lastOutcome = g.OrderByDescending(x => x.UpdatedUtc).Select(x => x.Outcome).FirstOrDefault()
-    }).OrderByDescending(c => c.lastActivity).ToArray();
-    return Results.Ok(customers);
-});
+app.MapGet("/api/customers", async (OutreachService outreach) =>
+    Results.Ok(await outreach.ListCustomersAsync()));
 
-app.MapGet("/api/customers/{customerId}/timeline", async (string customerId, OutreachStore store) =>
-{
-    var records = await store.ListByCustomerAsync(customerId);
-    return Results.Ok(records.Select(r => r.ToResult()));
-});
+app.MapGet("/api/customers/{customerId}/timeline", async (string customerId, OutreachService outreach) =>
+    Results.Ok(await outreach.GetCustomerTimelineAsync(customerId)));
 
 // ---------------------------------------------------------------------------
 // Inbound reply webhooks (Event Grid). Anonymous; validate handshake on creation.
@@ -972,5 +968,6 @@ app.MapMcp("/mcp");
 app.Run();
 
 record OutboundCallRequest(string PhoneNumber, string? Purpose, string? SystemPrompt, string? Name, string? Language, string? LanguageCode, string? TranscriptionHint, string? Voice, string? VoiceStyle);
+record FollowUpRequest(string Message, string? Channel = null, string? Subject = null);
 public record TranscriptionEvent(string Speaker, string Text, DateTime Timestamp);
 public record CallLogEntry(string Direction, string PhoneNumber, string Status, string ContextId, string? Name, string? Purpose, DateTimeOffset Timestamp);

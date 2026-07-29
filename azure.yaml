@@ -93,6 +93,23 @@ hooks:
           Write-Warning "  use a Dynamic Alphanumeric Sender ID (e.g. 'NORLYS') instead of a number."
         }
       }
+
+      # Two-way email from a real M365 mailbox. Only worth granting when a mailbox is set:
+      #   azd env set GRAPH_SENDER_ADDRESS noreply@norlys.dk
+      # Best-effort: the app-role grant needs a tenant admin, and email must never block voice.
+      if ($env:GRAPH_SENDER_ADDRESS) {
+        Write-Host "[postprovision] Graph mailbox $($env:GRAPH_SENDER_ADDRESS) — granting Mail.Send + Mail.ReadWrite"
+        try {
+          ./scripts/grant-graph-mail-permissions.ps1 -ResourceGroup $rg -ContainerAppName $ca
+        } catch {
+          Write-Warning "[postprovision] Graph mail permissions not granted: $($_.Exception.Message)"
+          Write-Warning "  Email falls back to outbound-only via ACS. A tenant admin can run"
+          Write-Warning "  scripts/grant-graph-mail-permissions.ps1 later to enable inbound replies."
+        }
+      }
+      else {
+        Write-Host "[postprovision] GRAPH_SENDER_ADDRESS not set — email stays on ACS (outbound only)."
+      }
     interactive: false
     continueOnError: false
 

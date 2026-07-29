@@ -30,8 +30,19 @@ param customDomain string = ''
 @description('Optional www custom domain (e.g. "www.example.com"). Leave empty on first deploy.')
 param customDomainWww string = ''
 
+@description('Suffix for globally-unique names (container registry, Cosmos, AI Foundry endpoint). Empty = derive from the subscription id so any subscription can deploy this template. Use "none" to keep the original unsuffixed names.')
+param resourceNameSuffix string = ''
+
 // Fixed naming prefix — all resource names derive from this, NOT from the azd env name
 var resourcePrefix = 'contactcenteragent'
+
+// A few resource names are GLOBALLY unique (container registry, Cosmos account, the AI
+// Foundry endpoint subdomain), so a second subscription deploying this template would
+// collide with the first. Default to a hash of the subscription id to keep `azd up`
+// working out of the box on any subscription; 'none' reproduces the original names.
+var nameSuffix = resourceNameSuffix == 'none'
+  ? ''
+  : (empty(resourceNameSuffix) ? uniqueString(subscription().id) : resourceNameSuffix)
 
 // azd resource tags for environment tracking
 var tags = {
@@ -57,6 +68,7 @@ module resources 'resources.bicep' = {
   scope: rg
   params: {
     resourcePrefix: resourcePrefix
+    nameSuffix: nameSuffix
     location: location
     tags: tags
     acsDataLocation: acsDataLocation

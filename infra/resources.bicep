@@ -9,6 +9,9 @@
 @description('Resource naming prefix (contactcenteragent)')
 param resourcePrefix string
 
+@description('Suffix appended to globally-unique resource names only (container registry, Cosmos account, AI Foundry endpoint subdomain).')
+param nameSuffix string = ''
+
 @description('Name for the AI Foundry project')
 param aiProjectName string = 'cog-${resourcePrefix}-prj'
 
@@ -29,6 +32,11 @@ param acsSmsNumber string = ''
 
 @description('Mailbox for Graph sendMail + inbound reply polling. Empty = ACS Email.')
 param graphSenderAddress string = ''
+
+// ACS rejects numbers without the leading '+'. azd env round-tripping has been seen to
+// drop it, so normalize here rather than trusting the caller.
+var acsPhoneNumberE164 = empty(acsPhoneNumber) || startsWith(acsPhoneNumber, '+') ? acsPhoneNumber : '+${acsPhoneNumber}'
+var acsSmsNumberE164 = empty(acsSmsNumber) || startsWith(acsSmsNumber, '+') ? acsSmsNumber : '+${acsSmsNumber}'
 
 @description('Optional apex custom domain (e.g. "example.com"). Leave empty to skip custom domain binding on first deploy.')
 param customDomain string = ''
@@ -52,7 +60,7 @@ resource aiFoundry 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
   kind: 'AIServices'
   properties: {
     allowProjectManagement: true
-    customSubDomainName: 'cog-${resourcePrefix}'
+    customSubDomainName: 'cog-${resourcePrefix}${nameSuffix}'
     disableLocalAuth: true
     publicNetworkAccess: 'Enabled'
   }
@@ -155,7 +163,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2025-07-01' = {
 // ---------------------------------------------------------------------------
 // 5. Container Registry
 // ---------------------------------------------------------------------------
-var acrName = 'cr${replace(resourcePrefix, '-', '')}'
+var acrName = 'cr${replace(resourcePrefix, '-', '')}${nameSuffix}'
 
 resource acr 'Microsoft.ContainerRegistry/registries@2025-11-01' = {
   name: acrName
@@ -371,11 +379,11 @@ resource adminChatApp 'Microsoft.App/containerApps@2026-01-01' = {
             }
             {
               name: 'NUXT_ACS_PHONE_NUMBER'
-              value: acsPhoneNumber
+              value: acsPhoneNumberE164
             }
             {
               name: 'NUXT_ACS_SMS_NUMBER'
-              value: acsSmsNumber
+              value: acsSmsNumberE164
             }
             {
               name: 'NUXT_MCP_URL'
@@ -567,11 +575,11 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
             }
             {
               name: 'AcsPhoneNumber'
-              value: acsPhoneNumber
+              value: acsPhoneNumberE164
             }
             {
               name: 'AcsSmsNumber'
-              value: acsSmsNumber
+              value: acsSmsNumberE164
             }
             // ─── Outreach persistence + channels ─────────────────────────
             {
@@ -698,7 +706,7 @@ resource emailSender 'Microsoft.Communication/emailServices/domains/senderUserna
 // 18. Cosmos DB (serverless) — outreach case store, partitioned by /customerId
 // ---------------------------------------------------------------------------
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
-  name: 'cosmos-${resourcePrefix}'
+  name: 'cosmos-${resourcePrefix}${nameSuffix}'
   location: location
   tags: tags
   kind: 'GlobalDocumentDB'

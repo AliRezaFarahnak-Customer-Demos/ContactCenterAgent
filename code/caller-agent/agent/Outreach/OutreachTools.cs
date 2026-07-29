@@ -41,7 +41,49 @@ public sealed class OutreachTools
         [Description("The outreachId returned by start_outreach")] string outreachId)
         => await svc.GetResultAsync(outreachId);
 
+    [McpServerTool(Name = "wait_for_outreach_result")]
+    [Description("Block until an outreach finishes (completed, failed or no_answer) or the timeout elapses, then return the same structured result as get_outreach_result. Use this instead of a polling loop when you need the voice call or the customer's reply before continuing. Returns the latest known state if the timeout is hit.")]
+    public static async Task<OutreachResult?> WaitForOutreachResult(
+        OutreachService svc,
+        [Description("The outreachId returned by start_outreach")] string outreachId,
+        [Description("Seconds to wait before returning the latest state anyway (5-600, default 120)")] int timeoutSeconds = 120,
+        CancellationToken cancellationToken = default)
+        => await svc.WaitForResultAsync(outreachId, timeoutSeconds, cancellationToken);
+
+    [McpServerTool(Name = "send_followup")]
+    [Description("Send a follow-up message on an EXISTING outreach thread — e.g. a written recap after a voice call, or a reply to something the customer wrote. Keeps the whole conversation on one record so the cross-channel timeline stays intact. Defaults to the outreach's own channel; a voice outreach falls back to SMS, or email if SMS can't reach the customer.")]
+    public static async Task<OutreachResult?> SendFollowUp(
+        OutreachService svc,
+        [Description("The outreachId to continue")] string outreachId,
+        [Description("Message body to send")] string message,
+        [Description("Optional channel override: sms or email")] string? channel = null,
+        [Description("Optional email subject")] string? subject = null)
+        => await svc.SendFollowUpAsync(outreachId, message, channel, subject);
+
+    [McpServerTool(Name = "list_outreach")]
+    [Description("List recent outreaches across all customers and channels, newest first, with status, summary, outcome and metrics. Use this to see what has already been attempted before starting something new.")]
+    public static async Task<IReadOnlyList<OutreachResult>> ListOutreach(
+        OutreachService svc,
+        [Description("Maximum number of outreaches to return (1-200, default 50)")] int limit = 50)
+        => await svc.ListRecentAsync(limit);
+
+    [McpServerTool(Name = "list_customers")]
+    [Description("List known customers rolled up across all their outreaches: which channels have been used, how many outreaches, last activity and last outcome. Returns the customerId to pass to get_customer_timeline.")]
+    public static async Task<IReadOnlyList<CustomerSummary>> ListCustomers(OutreachService svc)
+        => await svc.ListCustomersAsync();
+
+    [McpServerTool(Name = "get_customer_timeline")]
+    [Description("Get a customer's complete cross-channel history — every voice call, SMS and email in order, with each outreach's summary, outcome and metrics. Use this for context before contacting them again.")]
+    public static async Task<IReadOnlyList<OutreachResult>> GetCustomerTimeline(
+        OutreachService svc,
+        [Description("Customer id from list_customers (phone or email when no explicit id was set)")] string customerId)
+        => await svc.GetCustomerTimelineAsync(customerId);
+
     [McpServerTool(Name = "list_channels")]
-    [Description("List the available outreach channels and their current capabilities (enabled, inbound/outbound, reach constraints).")]
+    [Description("List the available outreach channels and their current capabilities (enabled, inbound/outbound, reach constraints). Check this before choosing a channel — SMS and email reach differ by country and configuration.")]
     public static IReadOnlyList<ChannelCapability> ListChannels(OutreachService svc) => svc.ListChannels();
+
+    [McpServerTool(Name = "list_personas")]
+    [Description("List the voice personas defined in personas.json. Pass one of these ids as the 'persona' argument to start_outreach to control how the AI agent behaves on a voice call.")]
+    public static IReadOnlyList<PersonaSummary> ListPersonas(OutreachService svc) => svc.ListPersonas();
 }

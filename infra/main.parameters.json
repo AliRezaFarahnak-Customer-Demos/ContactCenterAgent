@@ -22,6 +22,12 @@
     },
     "graphSenderAddress": {
       "value": "${GRAPH_SENDER_ADDRESS=}"
+    },
+    "acsDataLocation": {
+      "value": "${ACS_DATA_LOCATION=United States}"
+    },
+    "resourceNameSuffix": {
+      "value": "${RESOURCE_NAME_SUFFIX=}"
     }
   }
 }

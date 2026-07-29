@@ -73,13 +73,39 @@ foreach ($perm in $Permissions) {
         continue
     }
 
-    $body = @{ principalId = $principalId; resourceId = $graphSpId; appRoleId = $role.id } | ConvertTo-Json -Compress
-    az rest --method post `
-        --url "https://graph.microsoft.com/v1.0/servicePrincipals/$principalId/appRoleAssignments" `
-        --headers "Content-Type=application/json" `
-        --body $body | Out-Null
+    # Body goes via a temp file: on Windows the az shim hands --body to cmd.exe, which
+    # strips the inner quotes and Graph rejects the payload as invalid JSON.
+    $bodyFile = [System.IO.Path]::GetTempFileName()
+    try {
+        @{ principalId = $principalId; resourceId = $graphSpId; appRoleId = $role.id } |
+            ConvertTo-Json -Compress | Set-Content -Path $bodyFile -Encoding utf8 -NoNewline
 
-    Write-Host "  [ok]   $perm granted" -ForegroundColor Green
+        $output = az rest --method post `
+            --url "https://graph.microsoft.com/v1.0/servicePrincipals/$principalId/appRoleAssignments" `
+            --headers "Content-Type=application/json" `
+            --body "@$bodyFile" 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Graph rejected the $perm grant: $output"
+        }
+        Write-Host "  [ok]   $perm granted" -ForegroundColor Green
+    }
+    finally {
+        Remove-Item $bodyFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Read back so the caller sees what is actually in effect, not what we think we sent.
+$granted = az rest --method get `
+    --url "https://graph.microsoft.com/v1.0/servicePrincipals/$principalId/appRoleAssignments" `
+    --query "value[].appRoleId" -o json 2>$null | ConvertFrom-Json
+$effective = @($appRoles | Where-Object { $granted -contains $_.id } | Select-Object -ExpandProperty value)
+Write-Host ""
+Write-Host "Graph permissions now on this identity: $($effective -join ', ')" -ForegroundColor Cyan
+
+$missing = @($Permissions | Where-Object { $effective -notcontains $_ })
+if ($missing.Count -gt 0) {
+    throw "Still missing: $($missing -join ', '). A tenant admin (Privileged Role Administrator) must run this script."
 }
 
 Write-Host ""

@@ -408,7 +408,9 @@ onBeforeUnmount(() => timer && clearInterval(timer));
       >
       <div class="text-[10px] text-norlys-petroleum/60">
         Anonym · Streamable HTTP · værktøjer: start_outreach ·
-        get_outreach_result · list_channels
+        wait_for_outreach_result · get_outreach_result · send_followup ·
+        list_outreach · list_customers · get_customer_timeline · list_channels ·
+        list_personas
       </div>
     </div>
   </aside>

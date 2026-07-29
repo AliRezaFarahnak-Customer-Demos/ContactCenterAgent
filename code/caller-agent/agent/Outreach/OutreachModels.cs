@@ -50,6 +50,20 @@ public record ChannelCapability(
     string? Sender,
     string Notes);
 
+/// <summary>One customer rolled up across all their outreaches, for the roster view.</summary>
+public record CustomerSummary(
+    string CustomerId,
+    string? Name,
+    string? Phone,
+    string? Email,
+    string[] Channels,
+    int OutreachCount,
+    DateTimeOffset LastActivity,
+    string? LastOutcome);
+
+/// <summary>A selectable voice persona from personas.json (prompt body omitted — it's long).</summary>
+public record PersonaSummary(string Id, string Label, string? Description, string? LanguageCode);
+
 // ---------------------------------------------------------------------------
 // Persisted entity — Cosmos (Newtonsoft serializer). One record per outreach;
 // interactions are embedded (accessed together, well under the 2 MB item cap).

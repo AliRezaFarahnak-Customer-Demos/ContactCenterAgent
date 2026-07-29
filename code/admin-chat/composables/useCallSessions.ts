@@ -31,6 +31,7 @@ export interface CallSession {
 
 export function useCallSessions() {
   const sessions = useState<CallSession[]>("call-sessions", () => []);
+  const watchingLog = useState<boolean>("call-sessions-watching", () => false);
 
   function findById(contextId: string): CallSession | undefined {
     return sessions.value.find((s) => s.contextId === contextId);
@@ -44,7 +45,13 @@ export function useCallSessions() {
     direction: "outbound" | "inbound";
   }): CallSession {
     const existing = findById(input.contextId);
-    if (existing) return existing;
+    if (existing) {
+      // The call log adopts a session the moment it starts ringing; when the composer
+      // that placed it reports in a beat later, take its friendlier labels.
+      if (input.customerName) existing.customerName = input.customerName;
+      if (input.personaLabel) existing.personaLabel = input.personaLabel;
+      return existing;
+    }
 
     const session = reactive<CallSession>({
       contextId: input.contextId,
@@ -176,6 +183,71 @@ export function useCallSessions() {
     if (s) s.expanded = !s.expanded;
   }
 
+  /**
+   * Adopt calls started outside this browser tab — by an agent through the MCP or the
+   * outreach REST API, or by a customer ringing in — so every live call shows up in the
+   * dashboard with its transcript and sentiment, not just the ones placed from the composer.
+   * Safe to call repeatedly; only the first call opens the stream.
+   */
+  function watchCallLog() {
+    if (watchingLog.value) return;
+    watchingLog.value = true;
+    void streamCallLog();
+  }
+
+  async function streamCallLog() {
+    // Lives as long as the page does, reconnecting on drop. The backend replays
+    // still-active calls on connect, so a refresh restores them.
+    const ac = new AbortController();
+    for (;;) {
+      try {
+        const res = await fetch("/api/calls/stream", {
+          headers: { Accept: "text/event-stream" },
+          signal: ac.signal,
+        });
+        if (!res.ok || !res.body) throw new Error(`call log SSE ${res.status}`);
+
+        await readSse(res.body, ac.signal, (data) => {
+          if (data === "[DONE]") return;
+          let evt: {
+            Direction: string;
+            PhoneNumber: string;
+            Status: string;
+            ContextId: string;
+            Name: string | null;
+            Purpose: string | null;
+          };
+          try {
+            evt = JSON.parse(data);
+          } catch {
+            return;
+          }
+          if (!evt.ContextId) return;
+
+          if (evt.Status === "disconnected") {
+            const ended = findById(evt.ContextId);
+            if (ended) ended.status = "ended";
+            return;
+          }
+          if (findById(evt.ContextId)) return;
+
+          addSession({
+            contextId: evt.ContextId,
+            customerName: evt.Name || evt.PhoneNumber,
+            phoneNumber: evt.PhoneNumber,
+            personaLabel:
+              evt.Purpose ||
+              (evt.Direction === "inbound" ? "Indgående" : "Agent"),
+            direction: evt.Direction === "inbound" ? "inbound" : "outbound",
+          });
+        });
+      } catch (err: unknown) {
+        console.warn("[Sessions] Call log stream dropped, retrying", err);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+
   return {
     sessions,
     addSession,
@@ -183,6 +255,7 @@ export function useCallSessions() {
     removeSession,
     clearEnded,
     toggleExpanded,
+    watchCallLog,
   };
 }
 
