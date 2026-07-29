@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "norlys-outreach": {
+      "type": "http",
+      "url": "https://ca-caller-agent.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/mcp"
+    }
+  }
+}

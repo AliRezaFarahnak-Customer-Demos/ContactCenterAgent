@@ -408,6 +408,8 @@ FodyWeavers.xsd
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
+# Shared so anyone opening the repo gets the outreach MCP server (no secrets in it)
+!.vscode/mcp.json
 
 # Local History for Visual Studio Code
 .history/
