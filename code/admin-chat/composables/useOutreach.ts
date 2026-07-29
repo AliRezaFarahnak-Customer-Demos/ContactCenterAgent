@@ -122,6 +122,23 @@ export function useOutreach() {
     }
   }
 
+  // Demo aid: inject a customer reply so a two-way thread shows without a live carrier inbound.
+  async function simulateReply(input: {
+    from: string;
+    message: string;
+    channel?: string;
+  }): Promise<boolean> {
+    try {
+      await $fetch("/api/outreach/simulate-reply", {
+        method: "POST",
+        body: input,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return {
     channels,
     customers,
@@ -132,5 +149,6 @@ export function useOutreach() {
     loadMcpUrl,
     startOutreach,
     getResult,
+    simulateReply,
   };
 }

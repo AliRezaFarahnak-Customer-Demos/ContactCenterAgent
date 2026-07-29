@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { OutreachResult } from "~/composables/useOutreach";
+import type {
+    CustomerSummary,
+    OutreachResult,
+} from "~/composables/useOutreach";
 
 const props = defineProps<{ expanded?: boolean }>();
 
@@ -12,6 +15,7 @@ const {
   loadTimeline,
   loadMcpUrl,
   startOutreach,
+  simulateReply,
 } = useOutreach();
 
 const channel = ref<"voice" | "sms" | "email">("sms");
@@ -26,6 +30,8 @@ const lastSent = ref<OutreachResult | null>(null);
 const expanded = ref<string | null>(null);
 const timelines = reactive<Record<string, OutreachResult[]>>({});
 const mcpCopied = ref(false);
+const replyText = reactive<Record<string, string>>({});
+const replying = ref<string | null>(null);
 
 const channelMeta: Record<string, { label: string; dot: string }> = {
   voice: { label: "Opkald", dot: "bg-norlys-petroleum" },
@@ -81,6 +87,26 @@ async function send() {
     sendError.value = err instanceof Error ? err.message : String(err);
   } finally {
     sending.value = false;
+  }
+}
+
+// Demo aid: post a simulated customer reply so the two-way thread renders without a live carrier inbound.
+async function sendReply(c: CustomerSummary) {
+  const text = (replyText[c.customerId] || "").trim();
+  const from = c.phone || c.email;
+  if (!text || !from) return;
+  replying.value = c.customerId;
+  try {
+    await simulateReply({
+      from,
+      message: text,
+      channel: c.phone ? "sms" : "email",
+    });
+    replyText[c.customerId] = "";
+    timelines[c.customerId] = await loadTimeline(c.customerId);
+    await loadCustomers();
+  } finally {
+    replying.value = null;
   }
 }
 
@@ -331,6 +357,28 @@ onBeforeUnmount(() => timer && clearInterval(timer));
               >
                 {{ rec.summary }}
               </div>
+            </div>
+
+            <!-- Simulate a customer reply so the two-way thread shows (demo aid). -->
+            <div v-if="c.phone || c.email" class="flex gap-1.5 pt-1">
+              <input
+                v-model="replyText[c.customerId]"
+                type="text"
+                placeholder="Simulér kundesvar…"
+                class="flex-1 px-2.5 py-1.5 rounded-lg bg-white text-[12px] text-norlys-ink placeholder:text-norlys-petroleum/50 focus:outline-none focus:ring-2 focus:ring-norlys-petroleum/30"
+                @keyup.enter="sendReply(c)"
+              />
+              <button
+                type="button"
+                :disabled="
+                  replying === c.customerId ||
+                  !(replyText[c.customerId] || '').trim()
+                "
+                class="px-3 py-1.5 rounded-lg bg-norlys-petroleum text-norlys-sand text-[11px] font-semibold hover:bg-norlys-petroleum/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                @click="sendReply(c)"
+              >
+                {{ replying === c.customerId ? "…" : "Svar" }}
+              </button>
             </div>
           </div>
         </div>

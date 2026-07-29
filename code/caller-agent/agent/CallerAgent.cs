@@ -876,6 +876,23 @@ app.MapGet("/api/outreach/{id}", async (string id, OutreachService outreach) =>
     return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
+// Demo/testing aid: inject a customer "reply" into a thread using the SAME inbound code path as a real
+// Event Grid reply. Lets the dashboard show a two-way thread when a live carrier inbound isn't available
+// (e.g. trial test sender). Disable in production with Outreach:AllowSimulatedReplies=false.
+app.MapPost("/api/outreach/simulate-reply", async ([FromBody] SimulateReplyRequest req, OutreachService outreach) =>
+{
+    if (app.Configuration.GetValue<bool?>("Outreach:AllowSimulatedReplies") == false)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (string.IsNullOrWhiteSpace(req.From) || string.IsNullOrWhiteSpace(req.Message))
+        return Results.BadRequest(new { error = "from and message are required" });
+    var channel = string.IsNullOrWhiteSpace(req.Channel) ? "sms" : req.Channel!.Trim().ToLowerInvariant();
+    if (channel == "email")
+        await outreach.HandleInboundEmailAsync(req.From, req.Subject ?? "", req.Message);
+    else
+        await outreach.HandleInboundSmsAsync(req.From, req.Message);
+    return Results.Ok(new { ok = true, channel });
+});
+
 app.MapGet("/api/channels", (OutreachService outreach) => Results.Ok(outreach.ListChannels()));
 
 app.MapGet("/api/customers", async (OutreachStore store) =>

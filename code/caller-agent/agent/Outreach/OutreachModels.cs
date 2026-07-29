@@ -8,6 +8,9 @@ namespace CallerAgent.Outreach;
 
 public record OutreachCustomer(string? Id, string? Name, string? Phone, string? Email);
 
+/// <summary>Demo/testing aid: inject a customer reply into a thread without a live carrier inbound.</summary>
+public record SimulateReplyRequest(string From, string Message, string? Channel = null, string? Subject = null);
+
 /// <summary>Start-outreach request. One unified shape for voice, sms and email.</summary>
 public record OutreachRequest(
     OutreachCustomer Customer,

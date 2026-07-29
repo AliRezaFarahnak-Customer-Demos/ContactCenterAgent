@@ -208,6 +208,7 @@ public class ConversationAnalysisService : IDisposable
                     Timestamp: DateTime.UtcNow
                 );
 
+                LatestAnalysis = result;
                 _analysisWriter.TryWrite(result);
 
                 _telemetryClient?.TrackEvent("ConversationAnalysis", new Dictionary<string, string>
@@ -236,6 +237,9 @@ public class ConversationAnalysisService : IDisposable
             _analysisLock.Release();
         }
     }
+
+    /// <summary>Most recent per-turn sentiment scores, carried into the case summary at teardown.</summary>
+    public AnalysisResult? LatestAnalysis { get; private set; }
 
     /// <summary>
     /// Produce the one-shot structured case summary for the whole interaction.
@@ -279,7 +283,8 @@ public class ConversationAnalysisService : IDisposable
                 Verified: root.TryGetProperty("verified", out var v) && v.ValueKind == JsonValueKind.True,
                 FollowUpNeeded: root.TryGetProperty("followUpNeeded", out var f) && f.ValueKind == JsonValueKind.True,
                 FollowUpDraft: root.TryGetProperty("followUpDraft", out var d) ? d.GetString() ?? "" : "",
-                Timestamp: DateTime.UtcNow
+                Timestamp: DateTime.UtcNow,
+                Analysis: LatestAnalysis
             );
 
             _telemetryClient?.TrackEvent("CaseSummary", new Dictionary<string, string>
@@ -343,7 +348,8 @@ public record CaseSummary(
     bool Verified,
     bool FollowUpNeeded,
     string FollowUpDraft,
-    DateTime Timestamp
+    DateTime Timestamp,
+    AnalysisResult? Analysis = null
 );
 
 internal record TranscriptLine(string Speaker, string Text);

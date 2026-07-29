@@ -441,6 +441,9 @@ npm-debug.log*
 
 # Playwright screenshots
 .playwright-mcp/
+# Ad-hoc portal screenshots captured during investigation (not source)
+/alphanumeric-blade.png
+/phone-numbers-get-disabled.png
 
 # -----------------------------------------------------------------------
 # Speech Tool — generated/temp files
