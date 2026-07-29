@@ -40,8 +40,9 @@ public sealed class OutreachService
 
         var acsConn = config["AcsConnectionString"];
         _smsNumber = config["AcsSmsNumber"];
-        // Alphanumeric Sender ID for countries the toll-free can't text (e.g. +45). One-way only.
-        _smsSenderId = config["Acs:SmsSenderId"] ?? "Norlys";
+        // Optional alphanumeric sender ID. NOT enabled on this US-data-location resource
+        // (ACS returns 401), so it stays empty unless a registered sender is explicitly configured.
+        _smsSenderId = config["Acs:SmsSenderId"];
         _emailSender = config["Email:SenderAddress"];
 
         if (!string.IsNullOrWhiteSpace(acsConn))
@@ -98,25 +99,29 @@ public sealed class OutreachService
                     if (!SmsEnabled || string.IsNullOrWhiteSpace(req.Customer.Phone))
                         throw new InvalidOperationException("SMS-kanalen er ikke konfigureret, eller der mangler et telefonnummer.");
                     var toSms = req.Customer.Phone!.Trim();
-                    // +1 (US/CA/PR) → send from the toll-free NUMBER (two-way, replies captured).
-                    // Everything else (e.g. +45) → send from the Alphanumeric Sender ID. A name has no
-                    // inbound number, so it is ONE-WAY — the customer cannot reply.
-                    var nanp = toSms.StartsWith("+1");
+                    // The only sender authorized on this US-data-location resource is the toll-free
+                    // NUMBER; the alphanumeric sender ID returns 401 here, so prefer the number.
                     string smsFrom;
-                    bool oneWay;
-                    if (nanp && !string.IsNullOrWhiteSpace(_smsNumber)) { smsFrom = _smsNumber!; oneWay = false; }
-                    else if (!string.IsNullOrWhiteSpace(_smsSenderId)) { smsFrom = _smsSenderId!; oneWay = true; }
-                    else throw new InvalidOperationException($"Ingen SMS-afsender tilgængelig for {toSms}.");
-                    var smsResp = await _smsClient!.SendAsync(from: smsFrom, to: toSms, message: messageText);
+                    if (!string.IsNullOrWhiteSpace(_smsNumber)) smsFrom = _smsNumber!;
+                    else if (!string.IsNullOrWhiteSpace(_smsSenderId)) smsFrom = _smsSenderId!;
+                    else throw new InvalidOperationException("Ingen SMS-afsender konfigureret.");
+                    // Replies only route back for US/CA (+1) on our toll-free; other countries are one-way.
+                    var oneWay = !toSms.StartsWith("+1");
+                    Azure.Response<SmsSendResult> smsResp;
+                    try
+                    {
+                        smsResp = await _smsClient!.SendAsync(from: smsFrom, to: toSms, message: messageText);
+                    }
+                    catch (Azure.RequestFailedException rfe)
+                    {
+                        throw new InvalidOperationException(
+                            $"SMS kunne ikke sendes fra '{smsFrom}' (HTTP {rfe.Status}). " +
+                            (toSms.StartsWith("+1") ? "" : "Dette US-baserede ACS-resource sender to-vejs SMS til US/Canada; SMS til andre lande (fx +45) kræver et lokalt afsendernummer."));
+                    }
                     if (!smsResp.Value.Successful)
-                        throw new InvalidOperationException($"SMS blev afvist af ACS: {smsResp.Value.ErrorMessage} (HTTP {smsResp.Value.HttpStatusCode}). Afsender: '{smsFrom}'.");
+                        throw new InvalidOperationException($"SMS afvist af ACS (HTTP {smsResp.Value.HttpStatusCode}): {smsResp.Value.ErrorMessage}");
                     record.Interactions.Add(new Interaction { Channel = "sms", Direction = "outbound", Text = messageText });
                     record.Status = oneWay ? "completed" : "awaiting_reply";
-                    if (oneWay)
-                    {
-                        record.Metrics ??= new Dictionary<string, string>();
-                        record.Metrics["sms_delivery"] = $"envejs via afsender-id '{smsFrom}'";
-                    }
                     break;
 
                 case "email":
@@ -141,7 +146,9 @@ public sealed class OutreachService
         {
             _logger.LogError(ex, "Outreach start failed for channel {Channel}", channel);
             record.Status = "failed";
-            record.Reply = ex.Message;
+            record.Reply = ex is Azure.RequestFailedException rfe
+                ? $"{channel.ToUpperInvariant()} fejlede ({rfe.Status} {rfe.ErrorCode})."
+                : ex.Message;
         }
 
         await _store.UpsertAsync(record);
@@ -229,7 +236,7 @@ public sealed class OutreachService
     {
         new ChannelCapability("voice", true, true, true, null, "Global reach incl. Danish numbers."),
         new ChannelCapability("sms", SmsEnabled, SmsEnabled, !string.IsNullOrWhiteSpace(_smsNumber), _smsNumber ?? _smsSenderId,
-            SmsEnabled ? $"US/Canada: to-vejs via {_smsNumber}. Andre lande (fx +45): envejs via afsender-id '{_smsSenderId}'." : "Not configured."),
+            SmsEnabled ? $"To-vejs SMS til US/Canada via {_smsNumber}. Levering til andre lande (fx +45) er ikke garanteret fra dette US-baserede resource." : "Not configured."),
         new ChannelCapability("email", EmailEnabled, EmailEnabled, false, _emailSender,
             EmailEnabled ? "Outbound global. Inbound reply capture requires a custom domain." : "Not configured.")
     };
