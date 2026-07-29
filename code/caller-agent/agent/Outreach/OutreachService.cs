@@ -25,6 +25,7 @@ public sealed class OutreachService
     private readonly SmsClient? _smsClient;
     private readonly EmailClient? _emailClient;
     private readonly string? _smsNumber;
+    private readonly string? _smsSenderId;
     private readonly string? _emailSender;
 
     /// <summary>Set once at startup by Program.cs. Returns the voice-call contextId.</summary>
@@ -39,6 +40,8 @@ public sealed class OutreachService
 
         var acsConn = config["AcsConnectionString"];
         _smsNumber = config["AcsSmsNumber"];
+        // Alphanumeric Sender ID for countries the toll-free can't text (e.g. +45). One-way only.
+        _smsSenderId = config["Acs:SmsSenderId"] ?? "Norlys";
         _emailSender = config["Email:SenderAddress"];
 
         if (!string.IsNullOrWhiteSpace(acsConn))
@@ -48,7 +51,7 @@ public sealed class OutreachService
         }
     }
 
-    public bool SmsEnabled => _smsClient is not null && !string.IsNullOrWhiteSpace(_smsNumber);
+    public bool SmsEnabled => _smsClient is not null && (!string.IsNullOrWhiteSpace(_smsNumber) || !string.IsNullOrWhiteSpace(_smsSenderId));
     public bool EmailEnabled => _emailClient is not null && !string.IsNullOrWhiteSpace(_emailSender);
 
     // -----------------------------------------------------------------------
@@ -95,15 +98,25 @@ public sealed class OutreachService
                     if (!SmsEnabled || string.IsNullOrWhiteSpace(req.Customer.Phone))
                         throw new InvalidOperationException("SMS-kanalen er ikke konfigureret, eller der mangler et telefonnummer.");
                     var toSms = req.Customer.Phone!.Trim();
-                    // Our US toll-free can only DELIVER SMS to +1 (US/CA/PR) — it cannot text +45 etc.
-                    if (!toSms.StartsWith("+1"))
-                        throw new InvalidOperationException(
-                            $"Vores toll-free afsender (+1) kan kun sende SMS til US/Canada-numre — ikke {toSms} (fx danske +45). Det er en regulatorisk begrænsning. Brug Opkald eller E-mail til danske kunder, eller tilføj et dansk afsendernummer / Alphanumeric Sender ID.");
-                    var smsResp = await _smsClient!.SendAsync(from: _smsNumber, to: toSms, message: messageText);
+                    // +1 (US/CA/PR) → send from the toll-free NUMBER (two-way, replies captured).
+                    // Everything else (e.g. +45) → send from the Alphanumeric Sender ID. A name has no
+                    // inbound number, so it is ONE-WAY — the customer cannot reply.
+                    var nanp = toSms.StartsWith("+1");
+                    string smsFrom;
+                    bool oneWay;
+                    if (nanp && !string.IsNullOrWhiteSpace(_smsNumber)) { smsFrom = _smsNumber!; oneWay = false; }
+                    else if (!string.IsNullOrWhiteSpace(_smsSenderId)) { smsFrom = _smsSenderId!; oneWay = true; }
+                    else throw new InvalidOperationException($"Ingen SMS-afsender tilgængelig for {toSms}.");
+                    var smsResp = await _smsClient!.SendAsync(from: smsFrom, to: toSms, message: messageText);
                     if (!smsResp.Value.Successful)
-                        throw new InvalidOperationException($"SMS blev afvist af ACS: {smsResp.Value.ErrorMessage} (HTTP {smsResp.Value.HttpStatusCode}).");
+                        throw new InvalidOperationException($"SMS blev afvist af ACS: {smsResp.Value.ErrorMessage} (HTTP {smsResp.Value.HttpStatusCode}). Afsender: '{smsFrom}'.");
                     record.Interactions.Add(new Interaction { Channel = "sms", Direction = "outbound", Text = messageText });
-                    record.Status = "awaiting_reply";
+                    record.Status = oneWay ? "completed" : "awaiting_reply";
+                    if (oneWay)
+                    {
+                        record.Metrics ??= new Dictionary<string, string>();
+                        record.Metrics["sms_delivery"] = $"envejs via afsender-id '{smsFrom}'";
+                    }
                     break;
 
                 case "email":
@@ -215,8 +228,8 @@ public sealed class OutreachService
     public IReadOnlyList<ChannelCapability> ListChannels() => new[]
     {
         new ChannelCapability("voice", true, true, true, null, "Global reach incl. Danish numbers."),
-        new ChannelCapability("sms", SmsEnabled, SmsEnabled, SmsEnabled, _smsNumber,
-            SmsEnabled ? "US/Canada two-way. Danish numbers require a DK sender." : "Not configured."),
+        new ChannelCapability("sms", SmsEnabled, SmsEnabled, !string.IsNullOrWhiteSpace(_smsNumber), _smsNumber ?? _smsSenderId,
+            SmsEnabled ? $"US/Canada: to-vejs via {_smsNumber}. Andre lande (fx +45): envejs via afsender-id '{_smsSenderId}'." : "Not configured."),
         new ChannelCapability("email", EmailEnabled, EmailEnabled, false, _emailSender,
             EmailEnabled ? "Outbound global. Inbound reply capture requires a custom domain." : "Not configured.")
     };
