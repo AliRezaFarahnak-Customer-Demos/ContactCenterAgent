@@ -139,11 +139,15 @@ const activeCount = computed(
     <div v-if="showComposer" class="hidden lg:flex flex-1 min-w-0 h-full">
       <CallComposer @call="startCallFromComposer" />
     </div>
-    <div v-else class="hidden lg:block flex-1" />
 
     <!-- ============== CENTER — CALL SESSIONS (sentiment UI) ============== -->
     <aside
-      class="hidden lg:flex flex-col w-[22rem] xl:w-[26rem] 2xl:w-[30rem] shrink-0 h-full bg-white rounded-xl overflow-hidden"
+      class="hidden lg:flex flex-col h-full bg-white rounded-xl overflow-hidden"
+      :class="
+        showComposer
+          ? 'w-[22rem] xl:w-[26rem] 2xl:w-[30rem] shrink-0'
+          : 'flex-1 min-w-0'
+      "
     >
       <div class="px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -204,7 +208,7 @@ const activeCount = computed(
     </aside>
 
     <!-- ============== RIGHT — MULTI-CHANNEL OUTREACH (SMS / e-mail / opkald) ============== -->
-    <OutreachPanel />
+    <OutreachPanel :expanded="!showComposer" />
 
     <div
       v-if="callError"

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { OutreachResult } from "~/composables/useOutreach";
 
+const props = defineProps<{ expanded?: boolean }>();
+
 const {
   channels,
   customers,
@@ -120,7 +122,8 @@ onBeforeUnmount(() => timer && clearInterval(timer));
 
 <template>
   <aside
-    class="hidden xl:flex flex-col w-[26rem] 2xl:w-[32rem] shrink-0 h-full bg-white rounded-xl overflow-hidden"
+    class="hidden xl:flex flex-col h-full bg-white rounded-xl overflow-hidden"
+    :class="props.expanded ? 'flex-1 min-w-0' : 'w-[26rem] 2xl:w-[32rem] shrink-0'"
   >
     <div
       class="px-4 py-3 flex items-center justify-between border-b border-norlys-sand"
