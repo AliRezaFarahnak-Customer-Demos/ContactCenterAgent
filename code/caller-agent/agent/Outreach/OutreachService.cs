@@ -93,8 +93,15 @@ public sealed class OutreachService
 
                 case "sms":
                     if (!SmsEnabled || string.IsNullOrWhiteSpace(req.Customer.Phone))
-                        throw new InvalidOperationException("SMS channel not available or no phone number provided.");
-                    await _smsClient!.SendAsync(from: _smsNumber, to: req.Customer.Phone, message: messageText);
+                        throw new InvalidOperationException("SMS-kanalen er ikke konfigureret, eller der mangler et telefonnummer.");
+                    var toSms = req.Customer.Phone!.Trim();
+                    // Our US toll-free can only DELIVER SMS to +1 (US/CA/PR) — it cannot text +45 etc.
+                    if (!toSms.StartsWith("+1"))
+                        throw new InvalidOperationException(
+                            $"Vores toll-free afsender (+1) kan kun sende SMS til US/Canada-numre — ikke {toSms} (fx danske +45). Det er en regulatorisk begrænsning. Brug Opkald eller E-mail til danske kunder, eller tilføj et dansk afsendernummer / Alphanumeric Sender ID.");
+                    var smsResp = await _smsClient!.SendAsync(from: _smsNumber, to: toSms, message: messageText);
+                    if (!smsResp.Value.Successful)
+                        throw new InvalidOperationException($"SMS blev afvist af ACS: {smsResp.Value.ErrorMessage} (HTTP {smsResp.Value.HttpStatusCode}).");
                     record.Interactions.Add(new Interaction { Channel = "sms", Direction = "outbound", Text = messageText });
                     record.Status = "awaiting_reply";
                     break;
