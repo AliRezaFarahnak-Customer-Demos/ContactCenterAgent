@@ -27,6 +27,9 @@ param acsPhoneNumber string = ''
 @description('ACS SMS-capable number. Same US toll-free number as acsPhoneNumber — toll-free carries both voice and SMS.')
 param acsSmsNumber string = ''
 
+@description('Mailbox for Graph sendMail + inbound reply polling. Empty = ACS Email.')
+param graphSenderAddress string = ''
+
 @description('Optional apex custom domain (e.g. "example.com"). Leave empty to skip custom domain binding on first deploy.')
 param customDomain string = ''
 
@@ -586,6 +589,13 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
             {
               name: 'Email__SenderAddress'
               value: '${emailSender.properties.username}@${emailDomain.properties.fromSenderDomain}'
+            }
+            // Set graphSenderAddress to send/receive email from a real M365 mailbox instead
+            // of ACS Email. Replies are polled by GraphInboxPoller, so email becomes two-way
+            // without an ACS custom domain. Empty = stay on ACS Email above.
+            {
+              name: 'Graph__SenderAddress'
+              value: graphSenderAddress
             }
             // ─── Voice (TTS) ───────────────────────────────────────────────
             // Pin the TTS locale at the deployment layer so the production

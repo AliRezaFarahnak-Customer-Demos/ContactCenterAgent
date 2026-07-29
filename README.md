@@ -90,14 +90,30 @@ Same ACS SDK; ACS routes delivery to Infobip. **No subscription restriction — 
 2. Set `Email:SenderAddress` = e.g. `noreply@norlys.dk` and `AcsConnectionString`.
 3. Inbound email replies require a **custom domain** (already the case with `norlys.dk`) + an Event Grid subscription → `/api/events/email`.
 
-### Option B — Microsoft Graph `sendMail` (great for an M365 shop)
+### Option B — Microsoft Graph (real mailbox, **two-way out of the box**)
 
-Sends from a **real `norlys.dk` mailbox** via Microsoft Graph — fully branded, and because replies land in that mailbox, **email is two-way without attaching a custom domain to ACS**.
+Sends from a **real `norlys.dk` mailbox** via Graph `sendMail`, and a background poller
+(`GraphInboxPoller`) reads replies from that same mailbox — so **email is two-way without
+attaching a custom domain to ACS**. Replies flow into the *same* `HandleInboundEmailAsync`
+path as ACS Event Grid, landing in the customer's cross-channel timeline.
 
-1. Set `Graph:SenderAddress` to the mailbox, e.g. `noreply@norlys.dk`. That alone switches the email channel to Graph.
-2. Grant the caller-agent's **managed identity** the Graph application permission **`Mail.Send`** (admin consent).
+```powershell
+# 1. Grant the caller-agent's managed identity Mail.Send + Mail.ReadWrite (needs a tenant admin)
+./scripts/grant-graph-mail-permissions.ps1
 
-Auth uses `DefaultAzureCredential` — managed identity in Azure (**no secret**), `az login` locally. Leave `Graph:SenderAddress` empty to stay on ACS Email.
+# 2. Point the service at the mailbox and roll it out
+azd env set GRAPH_SENDER_ADDRESS noreply@norlys.dk
+azd provision
+azd deploy caller-agent
+```
+
+Auth is `DefaultAzureCredential` — **managed identity in Azure (no secret)**, `az login` locally.
+Leave `GRAPH_SENDER_ADDRESS` empty to stay on ACS Email. Poll interval defaults to 30s
+(`Graph:PollSeconds`); replies are de-duplicated by reading only unread mail and marking it read.
+
+> **Production hardening:** `Mail.Send` / `Mail.ReadWrite` are tenant-wide application permissions.
+> Scope them to the single outreach mailbox with an Exchange
+> [application access policy](https://learn.microsoft.com/graph/auth-limit-mailbox-access).
 
 ---
 
@@ -136,6 +152,7 @@ Nested keys use `:` in appsettings and `__` (double underscore) as environment v
 | `MessagingConnect:Partner`       | Partner id, default `infobip`.                               |
 | `Email:SenderAddress`            | ACS Email from-address (e.g. `noreply@norlys.dk`).           |
 | `Graph:SenderAddress`            | Mailbox for Graph `sendMail`. Set = Graph (two-way email); empty = ACS Email. |
+| `Graph:PollSeconds`              | Inbox poll interval for email replies (default 30, min 10).  |
 | `AzureOpenAI:Endpoint`           | Azure OpenAI endpoint. Also drafts SMS/email bodies from an intent. |
 | `Cosmos:Endpoint`                | Cosmos DB (conversation store); in-memory fallback if unset. |
 | `Outreach:AllowSimulatedReplies` | Set `false` in prod to disable the demo reply injector.      |
@@ -181,7 +198,7 @@ The one step that can't be scripted: Danish mobile numbers need **carrier/regula
 - [ ] Deploy to a Norlys **EA / Pay-as-you-go** subscription (not a sandbox).
 - [ ] `azd env set PHONE_COUNTRY DK` → `azd up` buys the DK voice + **two-way SMS** numbers.
 - [ ] Complete the DK mobile number's carrier registration (SMS delivery starts after approval).
-- [ ] Email: verify **`norlys.dk`** in ACS Email (or wire Graph `sendMail`).
+- [ ] Email: verify **`norlys.dk`** in ACS Email — **or** run `scripts/grant-graph-mail-permissions.ps1` and set `GRAPH_SENDER_ADDRESS` for two-way Graph email (§4).
 - [ ] Inbound: confirm the Event Grid subscriptions exist (`scripts/setup-eventgrid.ps1`).
 - [ ] Leave `MessagingConnect:*` empty to use **native ACS** instead of the partner route.
 - [ ] Set `Outreach:AllowSimulatedReplies=false`.
@@ -201,7 +218,7 @@ The one step that can't be scripted: Danish mobile numbers need **carrier/regula
 | **Async / callback** for slow channels                 | `callbackUrl` (pushed on completion) + `awaiting_reply` status for polling                                                                                                                |
 | **Voice** (HD voices, personas)                        | ACS Call Automation + Voice Live; personas in `personas.json`                                                                                                                             |
 | **SMS** outbound + inbound replies                     | ACS SMS; inbound via Event Grid → `/api/events/sms`                                                                                                                                       |
-| **Email** outbound + inbound replies                   | ACS Email (inbound via Event Grid → `/api/events/email`, needs a custom domain) **or** Microsoft Graph `sendMail` from a real mailbox — replies land in that mailbox, so two-way needs no ACS domain |
+| **Email** outbound + inbound replies                   | ACS Email (inbound via Event Grid → `/api/events/email`, needs a custom domain) **or** Microsoft Graph from a real mailbox — `sendMail` out, `GraphInboxPoller` in, so two-way needs no ACS domain |
 | Message body from **intent + system prompt**           | With no literal `message`, Azure OpenAI drafts the SMS/email body from the intent, the persona system prompt (`personas.json`) and the supplied `context`                                  |
 | Metrics: **sentiment (satisfaction, problem-solved)**  | `OutreachResult.Metrics` — `satisfaction`, `problem_solved`, `overall_sentiment`, `customer_mood`, `frustration`, `churn_risk`, `trust_in_agent`, `call_effectiveness` (0–6, 3 = neutral) |
 | Extensible LLM structured output                       | `Metrics` / `Collected` are open key-value maps; `ConversationAnalysisService` owns the schema                                                                                            |

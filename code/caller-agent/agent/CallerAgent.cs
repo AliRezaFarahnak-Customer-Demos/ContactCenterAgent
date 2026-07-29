@@ -101,6 +101,8 @@ builder.Services.AddSingleton(sp => new OutreachStore(builder.Configuration, aiC
 builder.Services.AddSingleton(sp => new OutreachService(
     sp.GetRequiredService<OutreachStore>(), builder.Configuration,
     sp.GetRequiredService<ILogger<OutreachService>>(), sp.GetService<TelemetryClient>()));
+// Captures email replies from a mailbox when Graph:SenderAddress is set; no-op otherwise.
+builder.Services.AddHostedService<GraphInboxPoller>();
 builder.Services.AddMcpServer().WithHttpTransport().WithTools<OutreachTools>();
 
 var app = builder.Build();

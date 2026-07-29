@@ -19,6 +19,9 @@
     },
     "acsSmsNumber": {
       "value": "${ACS_SMS_NUMBER=}"
+    },
+    "graphSenderAddress": {
+      "value": "${GRAPH_SENDER_ADDRESS=}"
     }
   }
 }

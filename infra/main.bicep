@@ -21,6 +21,9 @@ param acsPhoneNumber string = ''
 @description('ACS SMS-capable number. Same US toll-free number as acsPhoneNumber — toll-free carries both voice and SMS.')
 param acsSmsNumber string = ''
 
+@description('Mailbox for Microsoft Graph sendMail + inbound reply polling (e.g. "noreply@norlys.dk"). Empty = use ACS Email instead. The caller-agent managed identity needs Graph Mail.Send + Mail.ReadWrite: scripts/grant-graph-mail-permissions.ps1')
+param graphSenderAddress string = ''
+
 @description('Optional apex custom domain (e.g. "example.com"). Leave empty on first deploy.')
 param customDomain string = ''
 
@@ -59,6 +62,7 @@ module resources 'resources.bicep' = {
     acsDataLocation: acsDataLocation
     acsPhoneNumber: acsPhoneNumber
     acsSmsNumber: acsSmsNumber
+    graphSenderAddress: graphSenderAddress
     customDomain: customDomain
     customDomainWww: customDomainWww
   }
