@@ -53,6 +53,38 @@ public class ConversationAnalysisService : IDisposable
         }
         """u8.ToArray());
 
+    // Structured end-of-interaction summary — the cross-channel case backbone.
+    // Runs ONCE when an interaction ends (not per-turn like the sentiment scores),
+    // producing the outcome, a Danish summary, topics, and a ready-to-send follow-up
+    // draft that the SMS/email composer injects as prior context.
+    private static readonly BinaryData s_caseSummarySchema = BinaryData.FromBytes("""
+        {
+            "type": "object",
+            "properties": {
+                "summary": { "type": "string", "description": "2-3 sentence factual summary of the interaction, in Danish. No emojis, no markdown." },
+                "outcome": { "type": "string", "enum": ["resolved", "callback_needed", "verification_failed", "escalated", "no_answer", "other"], "description": "Single best-fit outcome of the interaction." },
+                "topics": { "type": "array", "items": { "type": "string" }, "description": "1-4 short Danish topic tags, e.g. regning, fiber, flytning." },
+                "verified": { "type": "boolean", "description": "True only if the caller passed MFA (address + one more security answer) in this interaction." },
+                "followUpNeeded": { "type": "boolean", "description": "True if the case is not fully resolved and a follow-up on another channel is warranted." },
+                "followUpDraft": { "type": "string", "description": "If followUpNeeded, a short Danish follow-up message body suitable for SMS or email. Empty string otherwise. No emojis, no markdown." }
+            },
+            "required": ["summary", "outcome", "topics", "verified", "followUpNeeded", "followUpDraft"],
+            "additionalProperties": false
+        }
+        """u8.ToArray());
+
+    private const string CaseSummarySystemPrompt =
+        """
+        You summarize a completed Norlys customer-service interaction for a cross-channel case file.
+        Output STRICTLY per the schema. Write summary, topics, and followUpDraft in DANISH.
+        Rules:
+        - summary: 2-3 factual sentences. What the customer wanted and what happened. No opinions, no emojis, no markdown, no asterisks.
+        - outcome: pick the single best fit. 'resolved' only if the customer's need was fully met. 'callback_needed' if something was promised or left open. 'verification_failed' if MFA did not pass. 'escalated' if handed to a human. 'no_answer' if no real conversation happened.
+        - verified: true ONLY if the customer confirmed their address AND one more security answer this interaction.
+        - followUpNeeded: true when the case is open or something was promised.
+        - followUpDraft: if followUpNeeded, write a warm, concrete Danish message (under 320 chars, SMS-safe) the customer can receive on another channel. Reference the concrete open point. No emojis, no markdown. Empty string if no follow-up needed.
+        """;
+
     private const string AnalysisSystemPrompt =
         """
         You are a real-time call center analytics engine. You analyze phone call transcripts and score the conversation across 15 categories on a 0-6 scale, where 3 means NEUTRAL.
@@ -205,6 +237,74 @@ public class ConversationAnalysisService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Produce the one-shot structured case summary for the whole interaction.
+    /// Call this once when an interaction ends. Isolated from the sentiment loop and
+    /// from the hang-up/farewell timing chain — safe to await off the critical path.
+    /// Returns null if there was no meaningful conversation or the model call failed.
+    /// </summary>
+    public async Task<CaseSummary?> GenerateCaseSummaryAsync()
+    {
+        if (_conversationHistory.Count == 0) return null;
+
+        try
+        {
+            var transcript = string.Join("\n", _conversationHistory.Select(l => $"{l.Speaker}: {l.Text}"));
+
+            var options = new ChatCompletionOptions
+            {
+                ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
+                    jsonSchemaFormatName: "case_summary",
+                    jsonSchema: s_caseSummarySchema,
+                    jsonSchemaIsStrict: true)
+            };
+
+            var messages = new ChatMessage[]
+            {
+                new SystemChatMessage(CaseSummarySystemPrompt),
+                new UserChatMessage($"Summarize this completed interaction:\n\n{transcript}")
+            };
+
+            var completion = await _chatClient.CompleteChatAsync(messages, options);
+            var content = completion.Value.Content[0].Text;
+
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+            var summary = new CaseSummary(
+                Summary: root.GetProperty("summary").GetString() ?? "",
+                Outcome: root.GetProperty("outcome").GetString() ?? "other",
+                Topics: root.TryGetProperty("topics", out var t) && t.ValueKind == JsonValueKind.Array
+                    ? t.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToArray()
+                    : Array.Empty<string>(),
+                Verified: root.TryGetProperty("verified", out var v) && v.ValueKind == JsonValueKind.True,
+                FollowUpNeeded: root.TryGetProperty("followUpNeeded", out var f) && f.ValueKind == JsonValueKind.True,
+                FollowUpDraft: root.TryGetProperty("followUpDraft", out var d) ? d.GetString() ?? "" : "",
+                Timestamp: DateTime.UtcNow
+            );
+
+            _telemetryClient?.TrackEvent("CaseSummary", new Dictionary<string, string>
+            {
+                { "case.outcome", summary.Outcome },
+                { "case.topics", string.Join(",", summary.Topics) },
+                { "case.verified", summary.Verified.ToString() },
+                { "case.follow_up_needed", summary.FollowUpNeeded.ToString() }
+            });
+            _logger.LogInformation("Case summary: outcome={Outcome}, verified={Verified}, followUp={FollowUp}",
+                summary.Outcome, summary.Verified, summary.FollowUpNeeded);
+
+            return summary;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating case summary");
+            _telemetryClient?.TrackException(ex, new Dictionary<string, string>
+            {
+                { "Component", "ConversationAnalysisService.GenerateCaseSummaryAsync" }
+            });
+            return null;
+        }
+    }
+
     public void Dispose()
     {
         if (!_disposed)
@@ -232,6 +332,17 @@ public record AnalysisResult(
     int Politeness,
     int CallEffectiveness,
     int OverallSentiment,
+    DateTime Timestamp
+);
+
+/// <summary>One-shot structured case summary for the cross-channel timeline.</summary>
+public record CaseSummary(
+    string Summary,
+    string Outcome,
+    string[] Topics,
+    bool Verified,
+    bool FollowUpNeeded,
+    string FollowUpDraft,
     DateTime Timestamp
 );
 

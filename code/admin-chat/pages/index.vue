@@ -4,6 +4,7 @@ const { sessions, addSession, removeSession, clearEnded, toggleExpanded } =
 
 const config = useRuntimeConfig();
 const callError = ref<string | null>(null);
+const showComposer = ref(true);
 
 // Inbound number customers can ring — served by the API so it's never hardcoded here.
 const { data: inboundPhone } = useFetch<{
@@ -120,6 +121,13 @@ const activeCount = computed(
         </svg>
         <span class="tabular-nums font-medium">{{ inboundPhone.display }}</span>
       </a>
+      <button
+        type="button"
+        class="hidden lg:inline-flex items-center gap-1.5 text-xs text-norlys-petroleum hover:text-norlys-red transition-colors"
+        @click="showComposer = !showComposer"
+      >
+        {{ showComposer ? "Skjul agent-opkald" : "Vis agent-opkald" }}
+      </button>
       <div class="flex-1" />
       <span
         class="font-headline text-base font-bold text-norlys-petroleum-3 hidden sm:inline"
@@ -127,14 +135,15 @@ const activeCount = computed(
       >
     </header>
 
-    <!-- ============== LEFT — CALL COMPOSER ============== -->
-    <div class="hidden lg:flex flex-1 min-w-0 h-full">
+    <!-- ============== LEFT — CALL COMPOSER (hidable; MCP-first focus) ============== -->
+    <div v-if="showComposer" class="hidden lg:flex flex-1 min-w-0 h-full">
       <CallComposer @call="startCallFromComposer" />
     </div>
+    <div v-else class="hidden lg:block flex-1" />
 
     <!-- ============== CENTER — CALL SESSIONS (sentiment UI) ============== -->
     <aside
-      class="hidden lg:flex flex-col w-[28rem] xl:w-[34rem] 2xl:w-[40rem] shrink-0 h-full bg-white rounded-xl overflow-hidden"
+      class="hidden lg:flex flex-col w-[22rem] xl:w-[26rem] 2xl:w-[30rem] shrink-0 h-full bg-white rounded-xl overflow-hidden"
     >
       <div class="px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -194,7 +203,9 @@ const activeCount = computed(
       </div>
     </aside>
 
-    <!-- ============== RIGHT — (chat panel removed; see copilot-instructions for restore notes) ============== -->
+    <!-- ============== RIGHT — MULTI-CHANNEL OUTREACH (SMS / e-mail / opkald) ============== -->
+    <OutreachPanel />
+
     <div
       v-if="callError"
       class="fixed top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-lg bg-norlys-red text-norlys-sand text-sm shadow-md"

@@ -1,6 +1,6 @@
 # Contact Center Agent — Copilot Instructions
 
-Multi-service platform on Azure: **admin-chat** (Nuxt 3 SPA, no .NET backend) and **caller-agent** (.NET 10, ACS + Voice Live API). Deployed via `azd` to Azure Container Apps. Local `azd up` is allowed.
+Multi-service platform on Azure: **admin-chat** (Nuxt SPA, no .NET backend) and **caller-agent** (.NET 10, ACS + Voice Live API). The caller-agent is also the unified **multi-channel outreach service** (voice + SMS + email) an onboarding agent can hand comms to, exposed as REST **and** an anonymous MCP server. Deployed via `azd` to Azure Container Apps. Local `azd up` is allowed.
 
 Voice Live reference code: https://github.com/microsoft-foundry/voicelive-samples/tree/main/csharp
 
@@ -20,6 +20,24 @@ This file deliberately contains **no code-level facts** (file lists, package ver
 8. **Known traps for a current task** — `grep_search` for the topic in `.github/agents/*.agent.md` (those _can_ go stale too — verify against source before quoting).
 
 When the user asks "what voice/model/prompt are we using?" → open the actual file. Never answer from memory or from this doc.
+
+---
+
+## Multi-channel outreach (voice + SMS + email)
+
+The caller-agent is the unified **outreach service**: one orchestrator, three channel adapters, two front doors (REST + MCP) over the SAME orchestrator. Full design in `docs/multi-channel-outreach-proposal.md`. Discover current shape from source, not here:
+
+- Orchestrator / models / Cosmos store / MCP tools: `code/caller-agent/agent/Outreach/` (`OutreachService.cs`, `OutreachModels.cs`, `OutreachStore.cs`, `OutreachTools.cs`).
+- REST surface (`/api/outreach*`, `/api/channels`, `/api/customers*`), Event Grid inbound webhooks (`/api/events/sms`, `/api/events/email`), `MapMcp("/mcp")`, and the voice `VoicePlacer` are wired in `code/caller-agent/agent/CallerAgent.cs`.
+- Voice results: `CaseSummary` is produced in `ConversationAnalysisService.GenerateCaseSummaryAsync()` and emitted from `AzureVoiceLiveService.Close()` (teardown — OFF the load-bearing farewell timing path) into a per-call `CaseSummary` channel that the outreach finalizer drains.
+- Admin UI: `code/admin-chat/components/OutreachPanel.vue` + `composables/useOutreach.ts` + `server/api/{outreach,channels,customers,outreach-config}*`.
+
+Durable facts (verify specifics in source):
+
+- **MCP is anonymous, Streamable HTTP, at `/mcp`** on the caller-agent (`ModelContextProtocol.AspNetCore`). Connect from VS Code with `{ "type": "http", "url": "https://<caller-agent>/mcp" }`. No auth by design (demo).
+- **Persistence is Cosmos serverless**, container `outreach`, pk `/customerId`, interactions embedded. Data-plane RBAC (Built-in Data Contributor) via Bicep, `disableLocalAuth: true`. If `Cosmos:Endpoint` is unset the store silently falls back to in-memory (local dev keeps working).
+- **Channel reach limits are regulatory, not effort:** voice global; SMS two-way only US/CA/PR (our toll-free) — never to +45; email outbound global but **inbound reply capture needs a custom domain** (can't run on the Azure-managed `*.azurecomm.net`). Inbound SMS Event Grid sub is created in `scripts/setup-eventgrid.ps1`; `/api/events/email` is wired but dormant until a custom domain is attached. Same flavor of constraint as `/memories/repo/acs-phone-numbers.md`.
+- ACS Email resource + Cosmos live in `infra/resources.bicep`; sender is `DoNotReply@<managed-domain>`; `Email:SenderAddress` / `Cosmos:Endpoint` / `AcsSmsNumber` env vars flow from Bicep. `NUXT_MCP_URL` / `NUXT_ACS_SMS_NUMBER` surface to admin-chat.
 
 ---
 

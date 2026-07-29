@@ -27,6 +27,8 @@ export default defineNuxtConfig({
     // Inbound ACS number shown in the UI. Injected by Bicep; empty until provisioned.
     acsPhoneNumber:
       process.env.NUXT_ACS_PHONE_NUMBER || process.env.ACS_PHONE_NUMBER || "",
+    // Public MCP endpoint URL (for the "connect from VS Code" hint). Injected by Bicep.
+    mcpUrl: process.env.NUXT_MCP_URL || "",
     public: {
       appVersion: version.appVersion,
       buildNumber: String(version.buildNumber),

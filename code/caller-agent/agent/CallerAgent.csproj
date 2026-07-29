@@ -15,10 +15,14 @@
     <PackageReference Include="Azure.AI.VoiceLive" Version="1.1.0" />
     <PackageReference Include="Azure.Communication.CallAutomation" Version="1.6.0" />
     <PackageReference Include="Azure.Communication.Common" Version="1.4.1" />
+    <PackageReference Include="Azure.Communication.Email" Version="1.1.0" />
+    <PackageReference Include="Azure.Communication.Sms" Version="1.0.2" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Azure.Messaging.EventGrid" Version="5.0.0" />
     <PackageReference Include="Azure.Messaging.EventGrid.SystemEvents" Version="1.0.0" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.1.2" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
   </ItemGroup>

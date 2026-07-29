@@ -66,6 +66,8 @@ namespace CallAutomation.AzureAI.VoiceLive
         private DateTime? m_greetingFirstAudioUtc;
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
+        private readonly ChannelWriter<CaseSummary>? m_caseSummaryWriter;
+        private bool m_caseSummaryEmitted;
         private readonly IConfiguration m_configuration;
         private ConversationAnalysisService? m_analysisService;
 
@@ -91,6 +93,7 @@ namespace CallAutomation.AzureAI.VoiceLive
             string? phoneNumber = null,
             ChannelWriter<TranscriptionEvent>? transcriptionWriter = null,
             ChannelWriter<AnalysisResult>? analysisWriter = null,
+            ChannelWriter<CaseSummary>? caseSummaryWriter = null,
             string? callVoice = null,
             string? callVoiceStyle = null)
         {
@@ -106,6 +109,7 @@ namespace CallAutomation.AzureAI.VoiceLive
             m_transcriptionHint = callTranscriptionHint;
             m_transcriptionWriter = transcriptionWriter;
             m_analysisWriter = analysisWriter;
+            m_caseSummaryWriter = caseSummaryWriter;
             m_callVoice = callVoice;
             m_callVoiceStyle = callVoiceStyle;
 
@@ -986,6 +990,19 @@ namespace CallAutomation.AzureAI.VoiceLive
         {
             try
             {
+                // Generate the one-shot structured case summary at teardown (call already
+                // ended — off the farewell timing path). Fed to the outreach finalizer.
+                if (!m_caseSummaryEmitted && m_analysisService != null && m_caseSummaryWriter != null)
+                {
+                    m_caseSummaryEmitted = true;
+                    try
+                    {
+                        var summary = await m_analysisService.GenerateCaseSummaryAsync();
+                        if (summary != null) m_caseSummaryWriter.TryWrite(summary);
+                    }
+                    catch (Exception sumEx) { m_logger.LogWarning(sumEx, "Case summary generation failed"); }
+                }
+
                 m_logger.LogInformation("Closing Voice Live service");
                 m_telemetryClient?.TrackEvent("VoiceLiveClose", new Dictionary<string, string>
                 {

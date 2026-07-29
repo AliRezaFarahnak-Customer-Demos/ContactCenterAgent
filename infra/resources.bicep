@@ -371,6 +371,14 @@ resource adminChatApp 'Microsoft.App/containerApps@2026-01-01' = {
               value: acsPhoneNumber
             }
             {
+              name: 'NUXT_ACS_SMS_NUMBER'
+              value: acsSmsNumber
+            }
+            {
+              name: 'NUXT_MCP_URL'
+              value: 'https://${callerAgentApp.properties.configuration.ingress.fqdn}/mcp'
+            }
+            {
               name: 'NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }
@@ -451,6 +459,9 @@ resource acs 'Microsoft.Communication/communicationServices@2023-04-01' = {
   tags: tags
   properties: {
     dataLocation: acsDataLocation
+    linkedDomains: [
+      emailDomain.id
+    ]
   }
 }
 
@@ -559,7 +570,24 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
               name: 'AcsSmsNumber'
               value: acsSmsNumber
             }
-            // ─── Voice (TTS) ──────────────────────────────────────────────
+            // ─── Outreach persistence + channels ─────────────────────────
+            {
+              name: 'Cosmos__Endpoint'
+              value: cosmos.properties.documentEndpoint
+            }
+            {
+              name: 'Cosmos__Database'
+              value: 'outreach'
+            }
+            {
+              name: 'Cosmos__Container'
+              value: 'outreach'
+            }
+            {
+              name: 'Email__SenderAddress'
+              value: '${emailSender.properties.username}@${emailDomain.properties.fromSenderDomain}'
+            }
+            // ─── Voice (TTS) ───────────────────────────────────────────────
             // Pin the TTS locale at the deployment layer so the production
             // container always sends `locale: "da-DK"` on the wire regardless
             // of any appsettings.json drift. Without this enforced, da-DK
@@ -623,6 +651,100 @@ resource callerAgentCognitiveServicesUserRole 'Microsoft.Authorization/roleAssig
 }
 
 // ---------------------------------------------------------------------------
+// 17. Azure Communication Services Email — outbound email (Azure-managed domain)
+// ---------------------------------------------------------------------------
+resource emailService 'Microsoft.Communication/emailServices@2023-04-01' = {
+  name: 'acs-email-${resourcePrefix}'
+  location: 'global'
+  tags: tags
+  properties: {
+    dataLocation: acsDataLocation
+  }
+}
+
+resource emailDomain 'Microsoft.Communication/emailServices/domains@2023-04-01' = {
+  parent: emailService
+  name: 'AzureManagedDomain'
+  location: 'global'
+  tags: tags
+  properties: {
+    domainManagement: 'AzureManaged'
+    userEngagementTracking: 'Disabled'
+  }
+}
+
+resource emailSender 'Microsoft.Communication/emailServices/domains/senderUsernames@2023-04-01' = {
+  parent: emailDomain
+  name: 'donotreply'
+  properties: {
+    username: 'DoNotReply'
+    displayName: 'Norlys'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 18. Cosmos DB (serverless) — outreach case store, partitioned by /customerId
+// ---------------------------------------------------------------------------
+resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
+  name: 'cosmos-${resourcePrefix}'
+  location: location
+  tags: tags
+  kind: 'GlobalDocumentDB'
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    capabilities: [
+      { name: 'EnableServerless' }
+    ]
+    consistencyPolicy: {
+      defaultConsistencyLevel: 'Session'
+    }
+    locations: [
+      {
+        locationName: location
+        failoverPriority: 0
+        isZoneRedundant: false
+      }
+    ]
+    disableLocalAuth: true
+  }
+}
+
+resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-11-15' = {
+  parent: cosmos
+  name: 'outreach'
+  properties: {
+    resource: {
+      id: 'outreach'
+    }
+  }
+}
+
+resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-11-15' = {
+  parent: cosmosDb
+  name: 'outreach'
+  properties: {
+    resource: {
+      id: 'outreach'
+      partitionKey: {
+        paths: ['/customerId']
+        kind: 'Hash'
+      }
+    }
+  }
+}
+
+// Cosmos DB Built-in Data Contributor (data-plane RBAC) for the caller-agent MI.
+resource cosmosDataRole 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-11-15' = {
+  parent: cosmos
+  name: guid(cosmos.id, callerAgentApp.id, 'data-contributor')
+  properties: {
+    roleDefinitionId: '${cosmos.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'
+    principalId: callerAgentApp.identity.principalId
+    scope: cosmos.id
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 16. Diagnostic Settings — ACS → Log Analytics
 // ---------------------------------------------------------------------------
 resource acsDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
@@ -657,3 +779,6 @@ output appInsightsConnectionString string = appInsights.properties.ConnectionStr
 output acsResourceName string = acs.name
 output callerAgentAppName string = callerAgentApp.name
 output callerAgentAppUrl string = 'https://${callerAgentApp.properties.configuration.ingress.fqdn}'
+output cosmosEndpoint string = cosmos.properties.documentEndpoint
+output emailSenderAddress string = '${emailSender.properties.username}@${emailDomain.properties.fromSenderDomain}'
+output mcpUrl string = 'https://${callerAgentApp.properties.configuration.ingress.fqdn}/mcp'

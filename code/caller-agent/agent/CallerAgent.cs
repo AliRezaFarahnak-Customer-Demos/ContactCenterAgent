@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Channels;
 using CallAutomation.AzureAI.VoiceLive;
+using CallerAgent.Outreach;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -85,11 +86,22 @@ var callConnections = new ConcurrentDictionary<string, string>();
 var transcriptionChannels = new ConcurrentDictionary<string, Channel<TranscriptionEvent>>();
 // Live analysis channels (keyed by contextId) — SSE consumers read analysis results
 var analysisChannels = new ConcurrentDictionary<string, Channel<AnalysisResult>>();
+// Case-summary channels (keyed by contextId) — one structured summary per call, drained by the outreach finalizer
+var caseSummaryChannels = new ConcurrentDictionary<string, Channel<CaseSummary>>();
 
 // Global call log — subscriber channels for broadcasting call events to multiple SSE clients
 var callLogSubscribers = new ConcurrentDictionary<string, Channel<CallLogEntry>>();
 // Keep a history so late-connecting SSE clients see recent entries
 var callLogHistory = new ConcurrentBag<CallLogEntry>();
+
+// ---------------------------------------------------------------------------
+// Outreach services (voice + SMS + email) + MCP server (anonymous)
+// ---------------------------------------------------------------------------
+builder.Services.AddSingleton(sp => new OutreachStore(builder.Configuration, aiCredential, sp.GetRequiredService<ILogger<OutreachStore>>()));
+builder.Services.AddSingleton(sp => new OutreachService(
+    sp.GetRequiredService<OutreachStore>(), builder.Configuration,
+    sp.GetRequiredService<ILogger<OutreachService>>(), sp.GetService<TelemetryClient>()));
+builder.Services.AddMcpServer().WithHttpTransport().WithTools<OutreachTools>();
 
 var app = builder.Build();
 
@@ -136,6 +148,14 @@ app.MapPost("/api/outboundCall", async (
     [FromBody] OutboundCallRequest request,
     ILogger<Program> logger,
     TelemetryClient telemetryClient) =>
+{
+    var contextId = await PlaceOutboundCallCoreAsync(request, logger, telemetryClient);
+    return Results.Ok(new { contextId, status = "ringing" });
+});
+
+// Core outbound-call placement, shared by /api/outboundCall and the outreach VoicePlacer.
+// Returns the callback/WebSocket contextId.
+async Task<string> PlaceOutboundCallCoreAsync(OutboundCallRequest request, ILogger logger, TelemetryClient telemetryClient)
 {
     var contextId = Guid.NewGuid().ToString();
     var callbackUri = new Uri(new Uri(appBaseUrl), $"/api/callbacks/{contextId}?callerId={request.PhoneNumber}");
@@ -199,6 +219,31 @@ app.MapPost("/api/outboundCall", async (
     });
     analysisChannels[contextId] = analysisChannel;
 
+    // Case-summary channel + finalizer: enriches the outreach record (if any) with the
+    // structured summary the voice service emits at teardown. Times out for non-outreach calls.
+    var caseSummaryChannel = Channel.CreateUnbounded<CaseSummary>(new UnboundedChannelOptions
+    {
+        SingleReader = true,
+        SingleWriter = true
+    });
+    caseSummaryChannels[contextId] = caseSummaryChannel;
+    var outreachForVoice = app.Services.GetRequiredService<OutreachService>();
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            await foreach (var summary in caseSummaryChannel.Reader.ReadAllAsync(cts.Token))
+            {
+                await outreachForVoice.FinalizeVoiceAsync(contextId, summary);
+                break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { logger.LogWarning(ex, "Case summary finalizer failed for {ContextId}", contextId); }
+        finally { caseSummaryChannels.TryRemove(contextId, out _); }
+    });
+
     // Force a fresh token before placing the call. Passing claims: "{}" bypasses
     // Azure.Core's token cache so we always get a brand-new token. ACS takes
     // several seconds to dial, so the token will still be valid when the
@@ -238,7 +283,7 @@ app.MapPost("/api/outboundCall", async (
     telemetryClient.TrackEvent("OutboundCallInitiated", new Dictionary<string, string>
     {
         { "PhoneNumber", request.PhoneNumber },
-        { "CallConnectionId", result.Value.CallConnection.CallConnectionId },
+        { "CallConnectionId", callConnectionId },
         { "Purpose", request.Purpose ?? "general" }
     });
 
@@ -257,13 +302,27 @@ app.MapPost("/api/outboundCall", async (
         sub.Writer.TryWrite(outboundEntry);
     }
 
-    return Results.Ok(new
-    {
-        callConnectionId = result.Value.CallConnection.CallConnectionId,
-        contextId,
-        status = "ringing"
-    });
-});
+    return contextId;
+}
+
+// Wire the voice channel into the outreach orchestrator (ACS call state stays here).
+app.Services.GetRequiredService<OutreachService>().VoicePlacer = async (record) =>
+{
+    var ctx = record.Context ?? new Dictionary<string, string>();
+    var req = new OutboundCallRequest(
+        record.Phone ?? "",
+        record.Intent ?? "outreach",
+        record.Message,
+        record.CustomerName,
+        "Danish",
+        "da",
+        null,
+        ctx.TryGetValue("voice", out var v) ? v : null,
+        ctx.TryGetValue("voiceStyle", out var vs) ? vs : null);
+    var vpLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("VoicePlacer");
+    var vpTelemetry = app.Services.GetRequiredService<TelemetryClient>();
+    return await PlaceOutboundCallCoreAsync(req, vpLogger, vpTelemetry);
+};
 
 // ---------------------------------------------------------------------------
 // POST /api/incomingCall — Handle inbound calls via EventGrid
@@ -400,6 +459,7 @@ app.MapPost("/api/callbacks/{contextId}", async (
     [FromRoute] string contextId,
     [Required] string callerId,
     ILogger<Program> logger,
+    OutreachService outreach,
     TelemetryClient telemetryClient) =>
 {
     foreach (var cloudEvent in cloudEvents)
@@ -478,6 +538,10 @@ app.MapPost("/api/callbacks/{contextId}", async (
             }
 
             logger.LogInformation("Cleaned up per-call data for context {ContextId}", contextId);
+
+            // Mark any linked outreach as completed (the voice case summary enriches it
+            // separately, off this path, when the voice service emits it at teardown).
+            _ = outreach.FinalizeVoiceAsync(contextId, null);
         }
     }
 
@@ -567,6 +631,13 @@ app.Use(async (context, next) =>
                     analysisWriter = axChannel.Writer;
                 }
 
+                // Look up the case-summary channel for this call
+                ChannelWriter<CaseSummary>? caseSummaryWriter = null;
+                if (!string.IsNullOrEmpty(wsContextId) && caseSummaryChannels.TryGetValue(wsContextId, out var csChannel))
+                {
+                    caseSummaryWriter = csChannel.Writer;
+                }
+
                 var mediaService = new AcsMediaStreamingHandler(
                     webSocket,
                     builder.Configuration,
@@ -581,6 +652,7 @@ app.Use(async (context, next) =>
                     callPhoneNumber,
                     transcriptionWriter,
                     analysisWriter,
+                    caseSummaryWriter,
                     callVoice,
                     callVoiceStyle);
 
@@ -791,6 +863,92 @@ app.MapGet("/api/calls/history", (ILogger<Program> logger) =>
     logger.LogInformation("Call log history requested, returning {Count} active entries (of {Total} total)", active.Length, callLogHistory.Count);
     return Results.Ok(active);
 });
+
+// ---------------------------------------------------------------------------
+// Outreach — unified voice / SMS / email surface (REST). Mirrored by MCP tools.
+// ---------------------------------------------------------------------------
+app.MapPost("/api/outreach", async ([FromBody] OutreachRequest request, OutreachService outreach) =>
+    Results.Ok(await outreach.StartAsync(request)));
+
+app.MapGet("/api/outreach/{id}", async (string id, OutreachService outreach) =>
+{
+    var result = await outreach.GetResultAsync(id);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
+
+app.MapGet("/api/channels", (OutreachService outreach) => Results.Ok(outreach.ListChannels()));
+
+app.MapGet("/api/customers", async (OutreachStore store) =>
+{
+    var all = await store.ListRecentAsync(500);
+    var customers = all.GroupBy(r => r.CustomerId).Select(g => new
+    {
+        customerId = g.Key,
+        name = g.Select(x => x.CustomerName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
+        phone = g.Select(x => x.Phone).FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)),
+        email = g.Select(x => x.Email).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e)),
+        channels = g.Select(x => x.Channel).Distinct().ToArray(),
+        outreachCount = g.Count(),
+        lastActivity = g.Max(x => x.UpdatedUtc),
+        lastOutcome = g.OrderByDescending(x => x.UpdatedUtc).Select(x => x.Outcome).FirstOrDefault()
+    }).OrderByDescending(c => c.lastActivity).ToArray();
+    return Results.Ok(customers);
+});
+
+app.MapGet("/api/customers/{customerId}/timeline", async (string customerId, OutreachStore store) =>
+{
+    var records = await store.ListByCustomerAsync(customerId);
+    return Results.Ok(records.Select(r => r.ToResult()));
+});
+
+// ---------------------------------------------------------------------------
+// Inbound reply webhooks (Event Grid). Anonymous; validate handshake on creation.
+// ---------------------------------------------------------------------------
+app.MapPost("/api/events/sms", async ([FromBody] EventGridEvent[] events, OutreachService outreach, ILogger<Program> logger) =>
+{
+    foreach (var e in events)
+    {
+        if (e.TryGetSystemEventData(out var data))
+        {
+            if (data is SubscriptionValidationEventData validation)
+                return Results.Ok(new { validationResponse = validation.ValidationCode });
+            if (data is AcsSmsReceivedEventData sms)
+            {
+                logger.LogInformation("Inbound SMS from {From}", sms.From);
+                await outreach.HandleInboundSmsAsync(sms.From, sms.Message);
+            }
+        }
+    }
+    return Results.Ok();
+});
+
+app.MapPost("/api/events/email", async ([FromBody] EventGridEvent[] events, OutreachService outreach, ILogger<Program> logger) =>
+{
+    foreach (var e in events)
+    {
+        if (e.TryGetSystemEventData(out var data) && data is SubscriptionValidationEventData validation)
+            return Results.Ok(new { validationResponse = validation.ValidationCode });
+        try
+        {
+            var payload = e.Data.ToObjectFromJson<Dictionary<string, object>>();
+            var from = payload.GetValueOrDefault("from")?.ToString() ?? payload.GetValueOrDefault("sender")?.ToString() ?? "";
+            var subject = payload.GetValueOrDefault("subject")?.ToString() ?? "";
+            var body = payload.GetValueOrDefault("plainText")?.ToString() ?? payload.GetValueOrDefault("body")?.ToString() ?? "";
+            if (!string.IsNullOrWhiteSpace(from))
+            {
+                logger.LogInformation("Inbound email from {From}", from);
+                await outreach.HandleInboundEmailAsync(from, subject, body);
+            }
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "Failed to parse inbound email event"); }
+    }
+    return Results.Ok();
+});
+
+// ---------------------------------------------------------------------------
+// MCP server — anonymous, Streamable HTTP at /mcp (frontend + local VS Code).
+// ---------------------------------------------------------------------------
+app.MapMcp("/mcp");
 
 app.Run();
 

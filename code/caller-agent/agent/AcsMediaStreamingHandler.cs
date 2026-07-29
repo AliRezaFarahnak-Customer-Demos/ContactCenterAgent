@@ -25,6 +25,7 @@ public class AcsMediaStreamingHandler
     private readonly string? m_phoneNumber;
     private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
     private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
+    private readonly ChannelWriter<CaseSummary>? m_caseSummaryWriter;
     private Func<string, Task>? m_onHangUp;
 
     /// <summary>
@@ -47,6 +48,7 @@ public class AcsMediaStreamingHandler
         string? phoneNumber = null,
         ChannelWriter<TranscriptionEvent>? transcriptionWriter = null,
         ChannelWriter<AnalysisResult>? analysisWriter = null,
+        ChannelWriter<CaseSummary>? caseSummaryWriter = null,
         string? callVoice = null,
         string? callVoiceStyle = null)
     {
@@ -64,6 +66,7 @@ public class AcsMediaStreamingHandler
         m_callTranscriptionHint = callTranscriptionHint;
         m_transcriptionWriter = transcriptionWriter;
         m_analysisWriter = analysisWriter;
+        m_caseSummaryWriter = caseSummaryWriter;
         m_callVoice = callVoice;
         m_callVoiceStyle = callVoiceStyle;
 
@@ -86,7 +89,7 @@ public class AcsMediaStreamingHandler
 
         m_logger.LogInformation("Initializing Azure Voice Live Service");
         var voiceLiveLogger = m_loggerFactory.CreateLogger<AzureVoiceLiveService>();
-        m_aiServiceHandler = new AzureVoiceLiveService(this, m_configuration, voiceLiveLogger, m_aiCredential, m_callSystemPrompt, m_callLanguage, m_callLanguageCode, m_callTranscriptionHint, m_telemetryClient, m_phoneNumber, m_transcriptionWriter, m_analysisWriter, m_callVoice, m_callVoiceStyle);
+        m_aiServiceHandler = new AzureVoiceLiveService(this, m_configuration, voiceLiveLogger, m_aiCredential, m_callSystemPrompt, m_callLanguage, m_callLanguageCode, m_callTranscriptionHint, m_telemetryClient, m_phoneNumber, m_transcriptionWriter, m_analysisWriter, m_caseSummaryWriter, m_callVoice, m_callVoiceStyle);
 
         // Initialize AI session asynchronously (avoids sync-over-async blocking in constructor)
         await m_aiServiceHandler.InitializeAsync(m_configuration);

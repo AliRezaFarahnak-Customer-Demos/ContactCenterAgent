@@ -126,4 +126,38 @@ else {
     exit 1
 }
 
+# ---------------------------------------------------------------------------
+# Inbound SMS subscription — routes SMSReceived events to /api/events/sms
+# (US/CA toll-free two-way). Same ACS system topic carries SMS events.
+# ---------------------------------------------------------------------------
+$smsSubscriptionName = "inbound-sms-to-caller-agent"
+$smsEndpoint = "https://${callerFqdn}/api/events/sms"
+
+$smsExisting = az eventgrid system-topic event-subscription show `
+    --name $smsSubscriptionName `
+    --system-topic-name $SystemTopicName `
+    --resource-group $ResourceGroup `
+    --query "name" -o tsv 2>$null
+
+if ($smsExisting) {
+    Write-Host "EventGrid subscription '$smsSubscriptionName' already exists. Skipping." -ForegroundColor Green
+}
+else {
+    Write-Host "Creating EventGrid subscription '$smsSubscriptionName'..." -ForegroundColor Yellow
+    az eventgrid system-topic event-subscription create `
+        --name $smsSubscriptionName `
+        --system-topic-name $SystemTopicName `
+        --resource-group $ResourceGroup `
+        --endpoint $smsEndpoint `
+        --included-event-types "Microsoft.Communication.SMSReceived" `
+        --event-delivery-schema eventgridschema `
+        --output none
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "EventGrid SMS subscription created. Inbound SMS will route to the caller agent." -ForegroundColor Green
+    }
+    else {
+        Write-Host "WARNING: Failed to create SMS EventGrid subscription (inbound SMS won't be captured)." -ForegroundColor Yellow
+    }
+}
+
 Write-Host ""
