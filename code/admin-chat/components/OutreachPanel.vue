@@ -122,8 +122,12 @@ onBeforeUnmount(() => timer && clearInterval(timer));
 
 <template>
   <aside
-    class="hidden xl:flex flex-col h-full bg-white rounded-xl overflow-hidden"
-    :class="props.expanded ? 'flex-1 min-w-0' : 'w-[26rem] 2xl:w-[32rem] shrink-0'"
+    class="hidden flex-col h-full bg-white rounded-xl overflow-hidden"
+    :class="
+      props.expanded
+        ? 'lg:flex flex-1 min-w-0'
+        : 'xl:flex w-[26rem] 2xl:w-[32rem] shrink-0'
+    "
   >
     <div
       class="px-4 py-3 flex items-center justify-between border-b border-norlys-sand"
@@ -333,23 +337,31 @@ onBeforeUnmount(() => timer && clearInterval(timer));
       </div>
     </div>
 
-    <!-- ===== MCP hint ===== -->
+    <!-- ===== MCP server (agent access) — exposed URL + tools ===== -->
     <div
       v-if="mcpUrl"
-      class="px-3 py-2 border-t border-norlys-sand flex items-center gap-2"
+      class="px-3 py-2.5 border-t border-norlys-sand bg-norlys-sand/40 space-y-1.5"
     >
-      <span class="text-[10px] text-norlys-petroleum/60 shrink-0">MCP</span>
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold text-norlys-petroleum-3"
+          >MCP-server (agent-adgang)</span
+        >
+        <button
+          type="button"
+          class="text-[10px] text-norlys-red hover:underline shrink-0"
+          @click="copyMcp()"
+        >
+          {{ mcpCopied ? "Kopieret" : "Kopiér URL" }}
+        </button>
+      </div>
       <code
-        class="flex-1 text-[10px] text-norlys-petroleum truncate tabular-nums"
+        class="block text-[10px] text-norlys-petroleum break-all leading-snug"
         >{{ mcpUrl }}</code
       >
-      <button
-        type="button"
-        class="text-[10px] text-norlys-red hover:underline shrink-0"
-        @click="copyMcp()"
-      >
-        {{ mcpCopied ? "Kopieret" : "Kopiér" }}
-      </button>
+      <div class="text-[10px] text-norlys-petroleum/60">
+        Anonym · Streamable HTTP · værktøjer: start_outreach ·
+        get_outreach_result · list_channels
+      </div>
     </div>
   </aside>
 </template>

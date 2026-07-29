@@ -126,7 +126,7 @@ const activeCount = computed(
         class="hidden lg:inline-flex items-center gap-1.5 text-xs text-norlys-petroleum hover:text-norlys-red transition-colors"
         @click="showComposer = !showComposer"
       >
-        {{ showComposer ? "Skjul agent-opkald" : "Vis agent-opkald" }}
+        {{ showComposer ? "Skjul opkaldscenter" : "Vis opkaldscenter" }}
       </button>
       <div class="flex-1" />
       <span
@@ -140,14 +140,10 @@ const activeCount = computed(
       <CallComposer @call="startCallFromComposer" />
     </div>
 
-    <!-- ============== CENTER — CALL SESSIONS (sentiment UI) ============== -->
+    <!-- ============== CENTER — CALL SESSIONS (sentiment UI); hides with composer ============== -->
     <aside
-      class="hidden lg:flex flex-col h-full bg-white rounded-xl overflow-hidden"
-      :class="
-        showComposer
-          ? 'w-[22rem] xl:w-[26rem] 2xl:w-[30rem] shrink-0'
-          : 'flex-1 min-w-0'
-      "
+      v-if="showComposer"
+      class="hidden lg:flex flex-col w-[22rem] xl:w-[26rem] 2xl:w-[30rem] shrink-0 h-full bg-white rounded-xl overflow-hidden"
     >
       <div class="px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
