@@ -12,12 +12,12 @@
 
 using System;
 using System.CommandLine;
-using System.CommandLine.Invocation;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Identity;
@@ -29,33 +29,33 @@ const string DefaultRegion = "swedencentral";
 const string DefaultVoice = "en-US-Ava:DragonHDLatestNeural";
 
 // ── Shared options ───────────────────────────────────────────────────────────
-var endpointOption = new Option<string>("--endpoint", () => DefaultEndpoint, "Azure AI Services endpoint");
-var regionOption = new Option<string>("--region", () => DefaultRegion, "Azure region");
+var endpointOption = new Option<string>("--endpoint") { Description = "Azure AI Services endpoint", DefaultValueFactory = _ => DefaultEndpoint };
+var regionOption = new Option<string>("--region") { Description = "Azure region", DefaultValueFactory = _ => DefaultRegion };
 
 // ══════════════════════════════════════════════════════════════════════════════
 // tts command
 // ══════════════════════════════════════════════════════════════════════════════
 var ttsCommand = new Command("tts", "Synthesize speech from text using a standard Azure voice");
-var textArg = new Argument<string>("text", "Text to speak");
-var voiceOption = new Option<string>("--voice", () => DefaultVoice, "Voice name (e.g., en-US-GuyNeural)");
-var outputOption = new Option<string>("-o", () => "output.wav", "Output audio file path");
-var playOption = new Option<bool>("--play", () => true, "Auto-play the output audio");
+var textArg = new Argument<string>("text") { Description = "Text to speak" };
+var voiceOption = new Option<string>("--voice") { Description = "Voice name (e.g., en-US-GuyNeural)", DefaultValueFactory = _ => DefaultVoice };
+var outputOption = new Option<string>("-o") { Description = "Output audio file path", DefaultValueFactory = _ => "output.wav" };
+var playOption = new Option<bool>("--play") { Description = "Auto-play the output audio", DefaultValueFactory = _ => true };
 
-ttsCommand.AddArgument(textArg);
-ttsCommand.AddOption(voiceOption);
-ttsCommand.AddOption(outputOption);
-ttsCommand.AddOption(playOption);
-ttsCommand.AddOption(endpointOption);
-ttsCommand.AddOption(regionOption);
+ttsCommand.Arguments.Add(textArg);
+ttsCommand.Options.Add(voiceOption);
+ttsCommand.Options.Add(outputOption);
+ttsCommand.Options.Add(playOption);
+ttsCommand.Options.Add(endpointOption);
+ttsCommand.Options.Add(regionOption);
 
-ttsCommand.SetHandler(async (InvocationContext context) =>
+ttsCommand.SetAction(async (ParseResult parseResult, CancellationToken _) =>
 {
-    var text = context.ParseResult.GetValueForArgument(textArg);
-    var voice = context.ParseResult.GetValueForOption(voiceOption)!;
-    var outputFile = context.ParseResult.GetValueForOption(outputOption)!;
-    var autoPlay = context.ParseResult.GetValueForOption(playOption);
-    var endpoint = context.ParseResult.GetValueForOption(endpointOption)!;
-    var region = context.ParseResult.GetValueForOption(regionOption)!;
+    var text = parseResult.GetValue(textArg)!;
+    var voice = parseResult.GetValue(voiceOption)!;
+    var outputFile = parseResult.GetValue(outputOption)!;
+    var autoPlay = parseResult.GetValue(playOption);
+    var endpoint = parseResult.GetValue(endpointOption)!;
+    var region = parseResult.GetValue(regionOption)!;
 
     Console.WriteLine($"🔊 Synthesizing speech...");
     Console.WriteLine($"   Text: \"{text}\"");
@@ -112,20 +112,20 @@ ttsCommand.SetHandler(async (InvocationContext context) =>
 // voices command — list available standard voices
 // ══════════════════════════════════════════════════════════════════════════════
 var voicesCommand = new Command("voices", "List available Azure TTS voices");
-var localeFilterOption = new Option<string?>("--locale", "Filter by locale (e.g., en-US)");
-var searchOption = new Option<string?>("--search", "Search voice names");
+var localeFilterOption = new Option<string?>("--locale") { Description = "Filter by locale (e.g., en-US)" };
+var searchOption = new Option<string?>("--search") { Description = "Search voice names" };
 
-voicesCommand.AddOption(localeFilterOption);
-voicesCommand.AddOption(searchOption);
-voicesCommand.AddOption(endpointOption);
-voicesCommand.AddOption(regionOption);
+voicesCommand.Options.Add(localeFilterOption);
+voicesCommand.Options.Add(searchOption);
+voicesCommand.Options.Add(endpointOption);
+voicesCommand.Options.Add(regionOption);
 
-voicesCommand.SetHandler(async (InvocationContext context) =>
+voicesCommand.SetAction(async (ParseResult parseResult, CancellationToken _) =>
 {
-    var localeFilter = context.ParseResult.GetValueForOption(localeFilterOption);
-    var search = context.ParseResult.GetValueForOption(searchOption);
-    var endpoint = context.ParseResult.GetValueForOption(endpointOption)!;
-    var region = context.ParseResult.GetValueForOption(regionOption)!;
+    var localeFilter = parseResult.GetValue(localeFilterOption);
+    var search = parseResult.GetValue(searchOption);
+    var endpoint = parseResult.GetValue(endpointOption)!;
+    var region = parseResult.GetValue(regionOption)!;
 
     var speechToken = await GetSpeechTokenAsync(endpoint);
     var speechConfig = SpeechConfig.FromAuthorizationToken(speechToken, region);
@@ -175,26 +175,26 @@ voicesCommand.SetHandler(async (InvocationContext context) =>
 // paralinguistics, temperature, English voice speaking Danish, etc.
 // ══════════════════════════════════════════════════════════════════════════════
 var danishLabCommand = new Command("danish-lab", "Play a battery of Danish TTS variants through the speaker so you can hear what HD Omni actually does on da-DK.");
-var onlyOption = new Option<string?>("--only", "Run only variants whose id contains this substring (e.g. 'paralinguistic')");
-var listOption = new Option<bool>("--list", () => false, "List all variants and exit (no synthesis)");
-var pauseOption = new Option<int>("--pause-ms", () => 1200, "Pause between clips, in milliseconds");
-var keepOption = new Option<bool>("--keep", () => false, "Keep generated WAV files after playback (default: delete)");
+var onlyOption = new Option<string?>("--only") { Description = "Run only variants whose id contains this substring (e.g. 'paralinguistic')" };
+var listOption = new Option<bool>("--list") { Description = "List all variants and exit (no synthesis)", DefaultValueFactory = _ => false };
+var pauseOption = new Option<int>("--pause-ms") { Description = "Pause between clips, in milliseconds", DefaultValueFactory = _ => 1200 };
+var keepOption = new Option<bool>("--keep") { Description = "Keep generated WAV files after playback (default: delete)", DefaultValueFactory = _ => false };
 
-danishLabCommand.AddOption(onlyOption);
-danishLabCommand.AddOption(listOption);
-danishLabCommand.AddOption(pauseOption);
-danishLabCommand.AddOption(keepOption);
-danishLabCommand.AddOption(endpointOption);
-danishLabCommand.AddOption(regionOption);
+danishLabCommand.Options.Add(onlyOption);
+danishLabCommand.Options.Add(listOption);
+danishLabCommand.Options.Add(pauseOption);
+danishLabCommand.Options.Add(keepOption);
+danishLabCommand.Options.Add(endpointOption);
+danishLabCommand.Options.Add(regionOption);
 
-danishLabCommand.SetHandler(async (InvocationContext context) =>
+danishLabCommand.SetAction(async (ParseResult parseResult, CancellationToken _) =>
 {
-    var only = context.ParseResult.GetValueForOption(onlyOption);
-    var listOnly = context.ParseResult.GetValueForOption(listOption);
-    var pauseMs = context.ParseResult.GetValueForOption(pauseOption);
-    var keep = context.ParseResult.GetValueForOption(keepOption);
-    var endpoint = context.ParseResult.GetValueForOption(endpointOption)!;
-    var region = context.ParseResult.GetValueForOption(regionOption)!;
+    var only = parseResult.GetValue(onlyOption);
+    var listOnly = parseResult.GetValue(listOption);
+    var pauseMs = parseResult.GetValue(pauseOption);
+    var keep = parseResult.GetValue(keepOption);
+    var endpoint = parseResult.GetValue(endpointOption)!;
+    var region = parseResult.GetValue(regionOption)!;
 
     // Reusable Danish lines
     const string DaNeutral = "Hej Mette, jeg ringer fra Norlys, har du tid et øjeblik?";
@@ -607,11 +607,11 @@ danishLabCommand.SetHandler(async (InvocationContext context) =>
 // Root command
 // ══════════════════════════════════════════════════════════════════════════════
 var rootCommand = new RootCommand("Speech Tool — Quick CLI for testing Azure Speech APIs");
-rootCommand.AddCommand(ttsCommand);
-rootCommand.AddCommand(voicesCommand);
-rootCommand.AddCommand(danishLabCommand);
+rootCommand.Subcommands.Add(ttsCommand);
+rootCommand.Subcommands.Add(voicesCommand);
+rootCommand.Subcommands.Add(danishLabCommand);
 
-return await rootCommand.InvokeAsync(args);
+return await rootCommand.Parse(args).InvokeAsync();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 static string EscapeXml(string text) =>

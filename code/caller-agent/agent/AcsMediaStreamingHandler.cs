@@ -18,6 +18,8 @@ public class AcsMediaStreamingHandler
     private readonly string? m_callLanguage;
     private readonly string? m_callLanguageCode;
     private readonly string? m_callTranscriptionHint;
+    private readonly string? m_callVoice;
+    private readonly string? m_callVoiceStyle;
     private readonly Azure.Core.TokenCredential m_aiCredential;
     private readonly TelemetryClient? m_telemetryClient;
     private readonly string? m_phoneNumber;
@@ -44,7 +46,9 @@ public class AcsMediaStreamingHandler
         TelemetryClient? telemetryClient = null,
         string? phoneNumber = null,
         ChannelWriter<TranscriptionEvent>? transcriptionWriter = null,
-        ChannelWriter<AnalysisResult>? analysisWriter = null)
+        ChannelWriter<AnalysisResult>? analysisWriter = null,
+        string? callVoice = null,
+        string? callVoiceStyle = null)
     {
         m_webSocket = webSocket;
         m_configuration = configuration;
@@ -60,6 +64,8 @@ public class AcsMediaStreamingHandler
         m_callTranscriptionHint = callTranscriptionHint;
         m_transcriptionWriter = transcriptionWriter;
         m_analysisWriter = analysisWriter;
+        m_callVoice = callVoice;
+        m_callVoiceStyle = callVoiceStyle;
 
         m_logger.LogInformation("AcsMediaStreamingHandler initialized (custom prompt: {HasPrompt}, language: {Language})", callSystemPrompt != null, callLanguage ?? "default");
     }
@@ -80,7 +86,7 @@ public class AcsMediaStreamingHandler
 
         m_logger.LogInformation("Initializing Azure Voice Live Service");
         var voiceLiveLogger = m_loggerFactory.CreateLogger<AzureVoiceLiveService>();
-        m_aiServiceHandler = new AzureVoiceLiveService(this, m_configuration, voiceLiveLogger, m_aiCredential, m_callSystemPrompt, m_callLanguage, m_callLanguageCode, m_callTranscriptionHint, m_telemetryClient, m_phoneNumber, m_transcriptionWriter, m_analysisWriter);
+        m_aiServiceHandler = new AzureVoiceLiveService(this, m_configuration, voiceLiveLogger, m_aiCredential, m_callSystemPrompt, m_callLanguage, m_callLanguageCode, m_callTranscriptionHint, m_telemetryClient, m_phoneNumber, m_transcriptionWriter, m_analysisWriter, m_callVoice, m_callVoiceStyle);
 
         // Initialize AI session asynchronously (avoids sync-over-async blocking in constructor)
         await m_aiServiceHandler.InitializeAsync(m_configuration);

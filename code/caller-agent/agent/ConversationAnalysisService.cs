@@ -8,7 +8,7 @@ using OpenAI.Chat;
 namespace CallAutomation.AzureAI.VoiceLive;
 
 /// <summary>
-/// Real-time conversation analysis using GPT-5.4-nano structured outputs.
+/// Real-time conversation analysis using GPT-5.6 structured outputs.
 /// Listens to transcript events and produces 15-category sentiment scores (0-6, where 3 = neutral)
 /// after every new speaker turn.
 /// </summary>
@@ -83,7 +83,7 @@ public class ConversationAnalysisService : IDisposable
         var endpoint = configuration.GetValue<string>("AzureOpenAI:Endpoint");
         ArgumentNullException.ThrowIfNullOrEmpty(endpoint);
 
-        var deploymentName = configuration.GetValue<string>("AzureOpenAI:AnalysisDeploymentName") ?? "gpt-5.4-nano";
+        var deploymentName = configuration.GetValue<string>("AzureOpenAI:AnalysisDeploymentName") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.AnalysisModel;
 
         // Create ChatClient with Azure OpenAI using DefaultAzureCredential
         var azureClient = new AzureOpenAIClient(new Uri(endpoint), credential);

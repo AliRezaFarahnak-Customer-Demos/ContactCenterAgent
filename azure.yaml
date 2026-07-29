@@ -19,7 +19,24 @@ infra:
 #                   deploy. ROOT-level so it ALWAYS runs (azd deploy <svc>,
 #                   azd up, azd package) — service-scoped hooks under
 #                   services.admin-chat.hooks did not fire reliably.
-#   postprovision : buy a US toll-free phone number from ACS (idempotent).
+#   postprovision : buy the ACS phone number(s) (idempotent, capability-aware).
+#                   Country is driven by the PHONE_COUNTRY azd env var so the
+#                   demo can switch without editing this file:
+#                     azd env set PHONE_COUNTRY DK   (then azd provision)
+#                   Default US: toll-free is the ONLY ACS number type carrying
+#                   voice AND two-way SMS on one number, so it backs both
+#                   AcsPhoneNumber and AcsSmsNumber.
+#                   DK (or any EU country): NO combined number exists —
+#                   geographic carries voice, mobile carries SMS, so two are
+#                   bought. The SMS one is best-effort and never blocks voice.
+#                   Regulatory limits that money does NOT solve:
+#                     - Outbound CALLS are unrestricted (US number can ring +45).
+#                     - SMS is country-scoped: a US toll-free can only text
+#                       US/CA/PR and can NEVER text a Danish handset. To SMS
+#                       Danish customers you need PHONE_COUNTRY=DK (mobile) or
+#                       a Dynamic Alphanumeric Sender ID.
+#                     - SMS registration latency: toll-free ~5-6wk, mobile
+#                       ~1-3wk, alphanumeric sender ID instant. Voice is instant.
 #   postdeploy    : create the EventGrid IncomingCall subscription pointing at
 #                   the caller-agent webhook. Must run after `azd deploy` has
 #                   rolled out the real image (the placeholder image returned
@@ -43,7 +60,39 @@ hooks:
 
   postprovision:
     shell: pwsh
-    run: ./scripts/provision-phone-number.ps1 -ResourceGroup "rg-contactcenteragent" -AcsResourceName "acs-contactcenteragent" -ContainerAppName "ca-caller-agent"
+    run: |
+      $rg = "rg-contactcenteragent"; $acs = "acs-contactcenteragent"; $ca = "ca-caller-agent"
+      $country = if ($env:PHONE_COUNTRY) { $env:PHONE_COUNTRY.ToUpper() } else { "US" }
+      Write-Host "[postprovision] Provisioning ACS number(s) for country: $country"
+
+      if ($country -eq "US") {
+        # US toll-free is the only ACS number carrying voice AND two-way SMS,
+        # so a single number backs both env vars.
+        ./scripts/provision-phone-number.ps1 -ResourceGroup $rg -AcsResourceName $acs -ContainerAppName $ca `
+          -CountryCode "US" -PhoneNumberType "tollFree" `
+          -CallingCapability "inbound+outbound" -SmsCapability "inbound+outbound" `
+          -EnvVarNames "AcsPhoneNumber","AcsSmsNumber" `
+          -AzdEnvVarNames "ACS_PHONE_NUMBER","ACS_SMS_NUMBER"
+      }
+      else {
+        # Denmark (and most of EU) has no combined number: geographic/tollFree
+        # carry voice, mobile carries SMS. Two numbers required.
+        ./scripts/provision-phone-number.ps1 -ResourceGroup $rg -AcsResourceName $acs -ContainerAppName $ca `
+          -CountryCode $country -PhoneNumberType "geographic" `
+          -EnvVarNames "AcsPhoneNumber" -AzdEnvVarNames "ACS_PHONE_NUMBER"
+
+        # SMS number is best-effort: mobile numbers can need regulatory review and
+        # SMS delivery only starts after registration. Must not block the voice demo.
+        try {
+          ./scripts/provision-phone-number.ps1 -ResourceGroup $rg -AcsResourceName $acs -ContainerAppName $ca `
+            -CountryCode $country -PhoneNumberType "mobile" `
+            -EnvVarNames "AcsSmsNumber" -AzdEnvVarNames "ACS_SMS_NUMBER"
+        } catch {
+          Write-Warning "[postprovision] $country mobile (SMS) number not provisioned: $($_.Exception.Message)"
+          Write-Warning "  Voice is unaffected. For instant outbound-only SMS to $country handsets,"
+          Write-Warning "  use a Dynamic Alphanumeric Sender ID (e.g. 'NORLYS') instead of a number."
+        }
+      }
     interactive: false
     continueOnError: false
 
@@ -73,9 +122,12 @@ services:
       path: ./Dockerfile
       context: .
       remoteBuild: true
+      # Values are quoted because azd's remote (ACR) build assembles a shell
+      # `docker build` command; the App Insights connection string contains
+      # semicolons which otherwise split the command and drop the context arg.
       buildArgs:
-        - NUXT_PUBLIC_SITE_URL=${ADMIN_CHAT_APP_URL}
-        - NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING}
+        - NUXT_PUBLIC_SITE_URL="${ADMIN_CHAT_APP_URL}"
+        - NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING="${APPLICATIONINSIGHTS_CONNECTION_STRING}"
 
   caller-agent:
     project: code/caller-agent

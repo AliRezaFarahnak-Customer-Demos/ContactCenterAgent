@@ -10,15 +10,12 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@microsoft/applicationinsights-web": "^3.3.11",
-    "dompurify": "^3.3.1",
-    "marked": "^15.0.0",
-    "nuxt": "^3.16.0",
-    "vue": "^3.5.0"
+    "@microsoft/applicationinsights-web": "^3.4.3",
+    "nuxt": "^4.5.0",
+    "vue": "^3.5.40"
   },
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.13.0",
-    "@types/dompurify": "^3.0.5",
-    "typescript": "^5.7.0"
+    "typescript": "^5.9.3"
   }
 }

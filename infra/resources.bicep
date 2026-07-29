@@ -24,6 +24,9 @@ param acsDataLocation string = 'United States'
 @description('ACS phone number for outbound calls (provisioned by provision-phone-number.ps1). Empty on first deploy.')
 param acsPhoneNumber string = ''
 
+@description('ACS SMS-capable number. Same US toll-free number as acsPhoneNumber — toll-free carries both voice and SMS.')
+param acsSmsNumber string = ''
+
 @description('Optional apex custom domain (e.g. "example.com"). Leave empty to skip custom domain binding on first deploy.')
 param customDomain string = ''
 
@@ -33,7 +36,7 @@ param customDomainWww string = ''
 // ---------------------------------------------------------------------------
 // 1. AI Foundry Resource (Cognitive Services Account)
 // ---------------------------------------------------------------------------
-resource aiFoundry 'Microsoft.CognitiveServices/accounts@2025-10-01-preview' = {
+resource aiFoundry 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
   name: 'cog-${resourcePrefix}'
   location: location
   tags: tags
@@ -55,7 +58,7 @@ resource aiFoundry 'Microsoft.CognitiveServices/accounts@2025-10-01-preview' = {
 // ---------------------------------------------------------------------------
 // 2. AI Foundry Project
 // ---------------------------------------------------------------------------
-resource aiProject 'Microsoft.CognitiveServices/accounts/projects@2025-10-01-preview' = {
+resource aiProject 'Microsoft.CognitiveServices/accounts/projects@2026-03-01' = {
   name: aiProjectName
   parent: aiFoundry
   location: location
@@ -67,41 +70,67 @@ resource aiProject 'Microsoft.CognitiveServices/accounts/projects@2025-10-01-pre
 }
 
 // ---------------------------------------------------------------------------
-// 3a. Model Deployment — GPT-5.4-nano (chat/agent)
+// 3a. Model Deployment — GPT-5.6-luna (mood emoji + LLM-as-judge)
 // ---------------------------------------------------------------------------
-resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = {
+// NOTE: gpt-5.6 requires an explicit quota request below subscription Tier 5.
+// Request via https://aka.ms/oai/stuquotarequest if deployment fails on quota.
+resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2026-03-01' = {
   parent: aiFoundry
-  name: 'gpt-5.4-nano'
+  name: 'gpt-5.6-luna'
   sku: {
     capacity: 1000
     name: 'GlobalStandard'
   }
   properties: {
     model: {
-      name: 'gpt-5.4-nano'
+      name: 'gpt-5.6-luna'
       format: 'OpenAI'
-      version: '2026-03-17'
+      version: '2026-07-09'
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// 3b. Model Deployment — gpt-realtime (voice AI for caller agent)
+// 3b. Model Deployment — gpt-realtime-2.1 (voice AI for caller agent)
 // ---------------------------------------------------------------------------
-resource realtimeModelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = {
+// Voice Live does NOT pre-host gpt-realtime-2.1 (its native allowlist stops at
+// gpt-realtime-1.5), so we deploy it here and reach it via the BYOM profile
+// `byom-azure-openai-realtime`. The deployment NAME below is what the caller-agent
+// sends as the `model=` query parameter — keep it in sync with VoiceLiveDefaults.Model.
+resource realtimeModelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2026-03-01' = {
   parent: aiFoundry
-  name: 'gpt-realtime'
+  name: 'gpt-realtime-2.1'
   dependsOn: [modelDeployment] // Serial deployment to avoid conflicts
   sku: {
-    capacity: 10 // Tier 1 quota limit for gpt-realtime-1.5 is 10 — request increase via https://aka.ms/oai/stuquotarequest
+    capacity: 10 // Tier 1 quota limit for the gpt-realtime family is 10 — request increase via https://aka.ms/oai/stuquotarequest
     name: 'GlobalStandard'
   }
   properties: {
     model: {
-      name: 'gpt-realtime-1.5'
+      name: 'gpt-realtime-2.1'
       format: 'OpenAI'
-      version: '2026-02-23'
+      version: '2026-07-07'
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3c. Role Assignment — Foundry User for the Foundry resource's own identity
+// ---------------------------------------------------------------------------
+// Required by Voice Live BYOM: the service uses this resource's system-assigned
+// managed identity to reach our own model deployment for the life of a session
+// (tokens expire mid-call otherwise). Role ID is used instead of the name because
+// the Foundry RBAC roles were renamed (was "Azure AI User").
+resource aiFoundrySelfFoundryUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiFoundry.id, 'byom-self', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
+  scope: aiFoundry
+  properties: {
+    principalId: aiFoundry.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+    )
   }
 }
 
@@ -175,7 +204,10 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 // ---------------------------------------------------------------------------
 // 8. Storage Account (Table Storage for agent data)
 // ---------------------------------------------------------------------------
-var storageAccountName = 'st${replace(resourcePrefix, '-', '')}'
+// Globally-unique, deterministic name: uniqueString() is seeded on the resource
+// group id so it's stable across redeploys (avoids orphaning the account) while
+// staying unique across all of Azure. 'st' + 13-char hash = 15 chars (<=24 limit).
+var storageAccountName = 'st${uniqueString(resourceGroup().id)}'
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2025-06-01' = {
   name: storageAccountName
@@ -283,7 +315,7 @@ var customDomainsConfig = concat(apexDomainEntry, wwwDomainEntry)
 // ---------------------------------------------------------------------------
 // 9. Container App — Admin Chat Agent
 // ---------------------------------------------------------------------------
-resource adminChatApp 'Microsoft.App/containerApps@2025-07-01' = {
+resource adminChatApp 'Microsoft.App/containerApps@2026-01-01' = {
   name: 'ca-admin-chat'
   location: location
   tags: union(tags, { 'azd-service-name': 'admin-chat' })
@@ -333,6 +365,10 @@ resource adminChatApp 'Microsoft.App/containerApps@2025-07-01' = {
             {
               name: 'NUXT_CALLER_AGENT_URL'
               value: 'https://${callerAgentApp.properties.configuration.ingress.fqdn}'
+            }
+            {
+              name: 'NUXT_ACS_PHONE_NUMBER'
+              value: acsPhoneNumber
             }
             {
               name: 'NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING'
@@ -439,7 +475,7 @@ resource acsEventGridTopic 'Microsoft.EventGrid/systemTopics@2024-06-01-preview'
 // ---------------------------------------------------------------------------
 // 13. Container App — Caller Agent (.NET 8, WebSockets enabled)
 // ---------------------------------------------------------------------------
-resource callerAgentApp 'Microsoft.App/containerApps@2025-07-01' = {
+resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
   name: 'ca-caller-agent'
   location: location
   tags: union(tags, { 'azd-service-name': 'caller-agent' })
@@ -498,6 +534,16 @@ resource callerAgentApp 'Microsoft.App/containerApps@2025-07-01' = {
               value: realtimeModelDeployment.name
             }
             {
+              // gpt-realtime-2.1 is self-deployed, so Voice Live needs the BYOM profile.
+              // Set to '' here to fall back to a natively-hosted model.
+              name: 'AzureOpenAI__ByomProfile'
+              value: 'byom-azure-openai-realtime'
+            }
+            {
+              name: 'AzureOpenAI__AnalysisDeploymentName'
+              value: modelDeployment.name
+            }
+            {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }
@@ -508,6 +554,10 @@ resource callerAgentApp 'Microsoft.App/containerApps@2025-07-01' = {
             {
               name: 'AcsPhoneNumber'
               value: acsPhoneNumber
+            }
+            {
+              name: 'AcsSmsNumber'
+              value: acsSmsNumber
             }
             // ─── Voice (TTS) ──────────────────────────────────────────────
             // Pin the TTS locale at the deployment layer so the production

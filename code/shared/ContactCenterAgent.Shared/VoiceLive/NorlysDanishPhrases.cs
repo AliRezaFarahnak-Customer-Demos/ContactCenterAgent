@@ -78,6 +78,12 @@ public static class NorlysDanishPhrases
         // ── Months & weekdays ────────────────────────
         "januar", "februar", "marts", "april", "maj", "juni",
         "juli", "august", "september", "oktober", "november", "december",
-        "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"
+        "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag",
+
+        // ── MFA verification values from personas.json ───────
+        // The caller speaks these aloud to pass verification, so a mishear here
+        // fails the whole flow. Keep in sync when a persona address changes.
+        "Skolevej", "Hovedgaden", "Aalborg", "Aarhus",
+        "Mette Hansen", "Lars Petersen"
     };
 }

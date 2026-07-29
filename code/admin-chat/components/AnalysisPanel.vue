@@ -46,12 +46,10 @@ function scoreLabel(score: number): string {
 
 <template>
   <aside
-    class="w-full h-full border-r border-norlys-light-petroleum overflow-hidden flex flex-col shrink-0 bg-white"
+    class="w-full h-full overflow-hidden flex flex-col shrink-0 bg-white rounded-xl"
   >
     <!-- Header -->
-    <div
-      class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center justify-between"
-    >
+    <div class="px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <!-- Analytics icon -->
         <svg
@@ -250,7 +248,7 @@ function scoreLabel(score: number): string {
         <!-- Last updated timestamp -->
         <div
           v-if="scores.Timestamp"
-          class="text-[10px] text-norlys-petroleum/60 text-center mt-4 pt-3 border-t border-norlys-light-petroleum"
+          class="text-[10px] text-norlys-petroleum/60 text-center mt-4 pt-3"
         >
           Last updated:
           {{

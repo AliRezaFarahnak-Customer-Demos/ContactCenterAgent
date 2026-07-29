@@ -12,6 +12,8 @@
  *     prompt: string,         // full system prompt, sent verbatim to Voice Live
  *     language: string,       // e.g. "Danish"
  *     languageCode: string,   // e.g. "da"
+ *     voice?: string,         // da-DK voice name, omit to use the agent default
+ *     voiceStyle?: string,    // HD Omni style; "" means explicitly no style
  *   }
  */
 export default defineEventHandler(async (event) => {
@@ -25,6 +27,8 @@ export default defineEventHandler(async (event) => {
     prompt: string;
     language: string;
     languageCode: string;
+    voice?: string;
+    voiceStyle?: string;
   }>(event);
 
   if (!body?.phoneNumber || !body?.prompt || !body?.personaLabel) {
@@ -66,6 +70,9 @@ export default defineEventHandler(async (event) => {
         language: body.language,
         languageCode: body.languageCode,
         transcriptionHint: undefined,
+        voice: body.voice || undefined,
+        // "" is a real choice (no style), so only undefined falls back to the agent default.
+        voiceStyle: body.voiceStyle,
       }),
     });
 

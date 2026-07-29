@@ -132,7 +132,7 @@ Use `/memories/repo/` for repo-scoped facts you've verified from source this ses
 
 ## Voice quality — HD Omni reference (current direction)
 
-We are migrating from `da-DK-ChristelNeural` (standard neural) to **Dragon HD Omni** for richer Danish prosody. Test in `danish-voice-lab/` first, then promote to caller-agent.
+**HD Omni is LIVE in prod.** `appsettings.json` carries no `Voice` block, so caller-agent inherits `VoiceLiveDefaults` (`da-DK-Christel:DragonHDOmniLatestNeural`, temperature 0.7, style `reassuring`). The old `da-DK-ChristelNeural` standard-neural voice is selectable per call from the admin UI, not the default. Test changes in `danish-voice-lab/` first, then promote.
 
 **Reference links (read these first, don't trust this doc's snapshot):**
 
@@ -168,8 +168,9 @@ The `:DragonHDOmniLatestNeural` suffix on the `name` is what flips the server in
 - ✅ `rate` (0.5–1.5 string) — works on both standard and HD.
 - ✅ `pitch`, `volume`, `style`, `locale`, `prefer_locales`, `custom_lexicon_url` — all on `RealtimeAzureStandardVoice`.
 - ❌ `top_p` / `top_k` / `cfg_scale` — these are HD Omni `parameters=` SSML attributes for direct Speech SDK use. **Not exposed through Voice Live JSON.**
-- ⚠️ `mstts:express-as` styles (cheerful, empathetic, friendly, professional, customer-service, etc.) — **DOCS SAY English-only, BUT empirically work on `da-DK` HD Omni** (lab-verified 29 Apr 2026 via `code/speech-tool/ danish-lab` against direct Speech SDK). Voice Live exposes `style` on `RealtimeAzureStandardVoice` and accepts the field. **Caveat:** styles aren't reachable through the Voice Live JSON wire payload that `caller-agent` builds today — `BuildVoiceConfig` would need a `style` field added. Validate on PSTN before relying on it: laptop-speaker results may overstate the effect once G.711 strips fidelity.
-- ✅ Paralinguistic tokens (`[sighing]`, `[laughter]`, `[breathing]`) — work in all languages, including Danish (lab-confirmed). Probably inappropriate for Norlys customer service.
+- ⚠️ `style` — **the HD / HD Omni style vocabulary is NOT the standard-neural one.** `friendly`, `professional`, `customer-service`, `cheerful`, `empathetic` are standard-neural tags and are **not** valid HD Omni styles — sending them risks silent fallback. Documented HD Omni styles include: `calm`, `confident`, `reassuring`, `encouraging`, `appreciative`, `concerned`, `curious`, `determined`, `hesitant`, `optimistic`, `reflective`, `relieved`, `amused`, `angry`, `anxious`, `quiet`. Our default is **`reassuring`**. Docs gate styles to English content, so Danish behaviour is empirical — validate on PSTN, since laptop-speaker results overstate the effect once G.711 strips fidelity. `style` **is** wired through `BuildVoiceConfig` and exposed per call in the admin UI.
+- ✅ Paralinguistic tokens (`[sighing]`, `[laughter]`, `[breathing]`) — **documented as working in all languages**, including Danish (lab-confirmed). Probably inappropriate for Norlys customer service.
+- ⚠️ `pitch` / `volume` — present in the `RealtimeAzureStandardVoice` schema, but HD Omni doesn't support SSML `<prosody>`, so they're likely inert on our voice. `rate` is separately documented as working.
 - ⚠️ The `instructions` system prompt only weakly steers Azure-voice prosody (per docs: _"may not apply to Azure voices"_). HD Omni's automatic prosody prediction does the heavy lifting; pacing should come from punctuation in model output.
 
 **PSTN ceiling still applies on output.** HD's quality gain is full-bandwidth on a laptop speaker but compressed through G.711 0.3–3.4 kHz on a phone call. The benefit on PSTN is mostly _prosody/intonation/pause naturalness_, not raw fidelity. Test in `danish-voice-lab/` with headphones to hear the full upside; expect a smaller (but still real) win on actual ACS calls.
@@ -180,7 +181,7 @@ The `:DragonHDOmniLatestNeural` suffix on the `name` is what flips the server in
 - `danish-voice-lab/appsettings.json` — minimal: only Endpoint / Model / PersonaId / MicDevice. Voice/temperature inherited from shared. Override `Voice` here to A/B test without touching prod.
 - `danish-voice-lab/Program.cs` — reads voice/temperature with shared defaults; auto-applies `DefaultVoiceTemperature` when voice is HD and no override given. `BuildAzureStandardVoice(name, temperature?)` constructs the typed SDK payload (Temperature property only set when non-null).
 - `code/caller-agent/agent/AzureVoiceLiveService.cs` `BuildVoiceConfig` — defaults from shared; sends `temperature` on `azure-standard` ONLY when `IsHdVoice(name)` returns true (so standard neural never gets an unexpected field that could trigger silent fallback).
-- `code/caller-agent/agent/appsettings.json` — explicit override holds prod on `da-DK-ChristelNeural` until lab validation completes. **To promote HD Omni to prod: delete the `Voice.Type` / `Voice.Name` / `Voice.Temperature` lines** and prod will inherit shared defaults. Redeploy with `azd deploy caller-agent`.
+- `code/caller-agent/agent/appsettings.json` — holds **no** `Voice` block, so prod inherits the shared HD Omni defaults. Add `Voice:Name` / `Voice:Temperature` / `Voice:Style` here only to pin prod to something other than the shared default. Redeploy with `azd deploy caller-agent`.
 
 **Verification after any voice swap:** App Insights `Session accepted by server` trace must echo the exact voice name in the `session.updated.voice` block. If it shows the default voice instead of what you sent → silent fallback (unsupported field or wrong region).
 

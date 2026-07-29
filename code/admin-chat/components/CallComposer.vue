@@ -7,9 +7,9 @@
  * values verbatim. Reload = reset to defaults.
  */
 import {
-  loadPersonas,
-  usePersonas,
-  type CallPersona,
+    loadPersonas,
+    usePersonas,
+    type CallPersona,
 } from "~/composables/useCallPersonas";
 
 const emit = defineEmits<{
@@ -22,9 +22,31 @@ const emit = defineEmits<{
       prompt: string;
       language: string;
       languageCode: string;
+      voice: string;
+      voiceStyle: string;
     },
   ];
 }>();
+
+type VoiceOption = {
+  value: string;
+  label: string;
+  description: string;
+  hd: boolean;
+};
+type StyleOption = { value: string; label: string; documented: boolean };
+
+const voices = ref<VoiceOption[]>([]);
+const styles = ref<StyleOption[]>([]);
+const selectedVoice = ref("");
+const selectedStyle = ref("");
+const showVoiceOptions = ref(false);
+
+// Style is an HD-only field; standard neural voices ignore it and unknown fields
+// on them can trigger a silent fallback to a default voice.
+const selectedVoiceIsHd = computed(
+  () => voices.value.find((v) => v.value === selectedVoice.value)?.hd ?? true,
+);
 
 const personas = usePersonas();
 const personaId = ref<string>("");
@@ -64,6 +86,22 @@ onMounted(async () => {
   } finally {
     isLoading.value = false;
   }
+
+  // Non-blocking: a failure here just leaves the agent defaults in play.
+  try {
+    const opts = await $fetch<{
+      defaultVoice: string;
+      defaultStyle: string;
+      voices: VoiceOption[];
+      styles: StyleOption[];
+    }>("/api/voice-options");
+    voices.value = opts.voices;
+    styles.value = opts.styles;
+    selectedVoice.value = opts.defaultVoice;
+    selectedStyle.value = opts.defaultStyle;
+  } catch {
+    /* keep agent-side defaults */
+  }
 });
 
 const canCall = computed(
@@ -88,6 +126,8 @@ async function startCall() {
       prompt: promptText.value,
       language: persona.value.language,
       languageCode: persona.value.languageCode,
+      voice: selectedVoice.value,
+      voiceStyle: selectedVoiceIsHd.value ? selectedStyle.value : "",
     });
   } finally {
     setTimeout(() => {
@@ -163,12 +203,10 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
 
 <template>
   <aside
-    class="w-full h-full flex flex-col border-r border-norlys-light-petroleum bg-white overflow-hidden"
+    class="w-full h-full flex flex-col bg-white rounded-xl overflow-hidden"
   >
     <!-- Header -->
-    <div
-      class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center gap-2"
-    >
+    <div class="px-4 py-3 flex items-center gap-2">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         class="w-4 h-4 text-norlys-red"
@@ -208,11 +246,11 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
             v-for="p in personas"
             :key="p.id"
             type="button"
-            class="text-left px-4 py-3 rounded-lg border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40"
+            class="text-left px-4 py-3 rounded-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40"
             :class="
               personaId === p.id
-                ? 'border-norlys-red bg-norlys-red/5 ring-1 ring-norlys-red/20'
-                : 'border-norlys-light-petroleum hover:border-norlys-petroleum/40 bg-white'
+                ? 'bg-norlys-red/5 ring-1 ring-norlys-red/30'
+                : 'bg-norlys-sand/60 hover:bg-norlys-sand-2'
             "
             @click="personaId = p.id"
           >
@@ -261,7 +299,7 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
         </div>
         <div class="mt-2 flex gap-2">
           <div
-            class="flex items-center px-3 py-2.5 text-base border border-norlys-light-petroleum rounded-lg bg-norlys-sand-2 text-norlys-petroleum tabular-nums"
+            class="flex items-center px-3 py-2.5 text-base rounded-lg bg-norlys-sand-2 text-norlys-petroleum tabular-nums"
           >
             +<input
               v-model="countryCode"
@@ -276,20 +314,117 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
             v-model="phoneNumber"
             type="tel"
             placeholder="80 71 90 50"
-            class="flex-1 px-3 py-2.5 text-base border rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 tabular-nums transition-shadow"
+            class="flex-1 px-3 py-2.5 text-base rounded-lg bg-norlys-sand/60 text-norlys-ink focus:outline-none focus:bg-white focus:ring-2 focus:ring-norlys-red/30 tabular-nums transition-all"
             :class="
               !phoneNumber.trim()
-                ? 'border-norlys-red/50 ring-2 ring-norlys-red/15 cc-input-pulse'
-                : 'border-norlys-light-petroleum'
+                ? 'ring-2 ring-norlys-red/25 cc-input-pulse'
+                : ''
             "
           />
+        </div>
+      </div>
+
+      <!-- Voice options (collapsed by default — sensible defaults already applied) -->
+      <div v-if="voices.length > 0">
+        <button
+          type="button"
+          class="w-full flex items-center justify-between text-sm font-semibold text-norlys-petroleum uppercase tracking-wide focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40 rounded"
+          :aria-expanded="showVoiceOptions"
+          @click="showVoiceOptions = !showVoiceOptions"
+        >
+          <span>Stemme</span>
+          <span
+            class="flex items-center gap-1.5 normal-case tracking-normal font-normal text-norlys-ink/60"
+          >
+            {{ voices.find((v) => v.value === selectedVoice)?.label }}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="w-4 h-4 transition-transform"
+              :class="showVoiceOptions ? 'rotate-180' : ''"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
+        </button>
+
+        <div v-if="showVoiceOptions" class="mt-2 space-y-3">
+          <div class="grid gap-1.5">
+            <button
+              v-for="v in voices"
+              :key="v.value"
+              type="button"
+              class="text-left px-3 py-2 rounded-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40"
+              :class="
+                selectedVoice === v.value
+                  ? 'bg-norlys-red/5 ring-1 ring-norlys-red/30'
+                  : 'bg-norlys-sand/60 hover:bg-norlys-sand-2'
+              "
+              @click="selectedVoice = v.value"
+            >
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-norlys-petroleum-3">{{
+                  v.label
+                }}</span>
+                <span
+                  v-if="v.hd"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-norlys-petroleum/10 text-norlys-petroleum font-semibold"
+                  >HD</span
+                >
+              </div>
+              <p class="text-xs text-norlys-ink/60 mt-0.5 leading-snug">
+                {{ v.description }}
+              </p>
+            </button>
+          </div>
+
+          <div v-if="selectedVoiceIsHd">
+            <span
+              class="text-xs font-semibold text-norlys-petroleum uppercase tracking-wide"
+              >Tone</span
+            >
+            <div class="mt-1.5 flex flex-wrap gap-1.5">
+              <button
+                v-for="s in styles"
+                :key="s.value"
+                type="button"
+                class="px-2.5 py-1 rounded-full text-xs transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-norlys-red/40"
+                :class="
+                  selectedStyle === s.value
+                    ? 'bg-norlys-red text-white'
+                    : 'bg-norlys-sand-2 text-norlys-petroleum hover:bg-norlys-light-petroleum'
+                "
+                :title="
+                  s.documented
+                    ? 'Dokumenteret HD Omni-stil'
+                    : 'Ikke i den officielle HD Omni-liste'
+                "
+                @click="selectedStyle = s.value"
+              >
+                {{ s.label
+                }}<span v-if="!s.documented" aria-hidden="true">&nbsp;*</span>
+              </button>
+            </div>
+            <p class="text-[11px] text-norlys-ink/50 mt-1.5 leading-snug">
+              * ikke i den officielle HD Omni-liste — virker, men udokumenteret.
+            </p>
+          </div>
+          <p v-else class="text-[11px] text-norlys-ink/50 leading-snug">
+            Standardstemmer understøtter ikke tone eller temperatur.
+          </p>
         </div>
       </div>
 
       <!-- Verifikationsfakta cheat sheet (parsed from prompt) -->
       <div
         v-if="verificationFacts.length > 0"
-        class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3"
+        class="rounded-lg bg-amber-50 px-4 py-3"
       >
         <div class="flex items-center gap-1.5 mb-2">
           <svg
@@ -320,9 +455,10 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
             <span class="text-amber-800 font-medium min-w-16"
               >{{ f.label }}:</span
             >
-            <span class="font-mono text-amber-900 select-all">{{
-              f.value
-            }}</span>
+            <span
+              class="tabular-nums font-semibold text-amber-900 select-all"
+              >{{ f.value }}</span
+            >
           </li>
         </ul>
       </div>
@@ -340,13 +476,13 @@ const verificationFacts = computed<Array<{ label: string; value: string }>>(
           v-autosize
           rows="14"
           aria-label="System prompt"
-          class="mt-2 w-full px-3 py-3 text-sm border border-norlys-light-petroleum rounded-lg bg-white text-norlys-ink focus:outline-none focus:border-norlys-red focus:ring-1 focus:ring-norlys-red/30 resize-none font-mono leading-relaxed"
+          class="mt-2 w-full px-3 py-3 text-sm rounded-lg bg-norlys-sand/60 text-norlys-ink focus:outline-none focus:bg-white focus:ring-2 focus:ring-norlys-red/30 resize-none tabular-nums leading-relaxed transition-all"
         ></textarea>
       </div>
     </div>
 
     <!-- Call button -->
-    <div class="px-5 py-4 border-t border-norlys-light-petroleum bg-white">
+    <div class="px-5 py-4 bg-white">
       <button
         type="button"
         :disabled="!canCall"

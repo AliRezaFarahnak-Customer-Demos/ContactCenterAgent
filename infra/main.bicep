@@ -18,6 +18,9 @@ param acsDataLocation string = 'United States'
 @description('ACS phone number for outbound calls (set by provision-phone-number.ps1 or CI)')
 param acsPhoneNumber string = ''
 
+@description('ACS SMS-capable number. Same US toll-free number as acsPhoneNumber — toll-free carries both voice and SMS.')
+param acsSmsNumber string = ''
+
 @description('Optional apex custom domain (e.g. "example.com"). Leave empty on first deploy.')
 param customDomain string = ''
 
@@ -55,6 +58,7 @@ module resources 'resources.bicep' = {
     tags: tags
     acsDataLocation: acsDataLocation
     acsPhoneNumber: acsPhoneNumber
+    acsSmsNumber: acsSmsNumber
     customDomain: customDomain
     customDomainWww: customDomainWww
   }

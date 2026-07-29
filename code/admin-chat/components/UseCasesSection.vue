@@ -237,7 +237,7 @@ onMounted(() => {
         <!-- Bottom row: country flags with call counts (hidden on mobile) -->
         <div
           v-if="stats.countries.length > 0"
-          class="hidden sm:flex flex-wrap gap-2 pt-3 border-t border-norlys-light-petroleum"
+          class="hidden sm:flex flex-wrap gap-2 pt-3"
         >
           <div
             v-for="country in stats.countries"

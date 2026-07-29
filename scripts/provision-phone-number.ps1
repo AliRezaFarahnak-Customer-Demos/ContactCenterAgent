@@ -27,8 +27,26 @@ param(
     [string]$CountryCode = "US",
 
     [Parameter(Mandatory = $false)]
-    [ValidateSet("tollFree", "geographic")]
+    [ValidateSet("tollFree", "geographic", "mobile")]
     [string]$PhoneNumberType = "tollFree",
+
+    # Blank = derive from $PhoneNumberType. Denmark has no number that does both
+    # voice and SMS: geographic/tollFree are calling-only, mobile is SMS-only.
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("", "none", "inbound", "outbound", "inbound+outbound")]
+    [string]$CallingCapability = "",
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("", "none", "inbound", "outbound", "inbound+outbound")]
+    [string]$SmsCapability = "",
+
+    # Which container-app env var(s) / azd env var(s) receive the resulting number.
+    # A US toll-free number carries BOTH voice and SMS, so it populates both.
+    [Parameter(Mandatory = $false)]
+    [string[]]$EnvVarNames = @("AcsPhoneNumber"),
+
+    [Parameter(Mandatory = $false)]
+    [string[]]$AzdEnvVarNames = @("ACS_PHONE_NUMBER"),
 
     [Parameter(Mandatory = $false)]
     [string]$AreaCode = "",
@@ -45,6 +63,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ACS_API_VERSION = "2024-03-01-preview"
+
+if (-not $CallingCapability) {
+    $CallingCapability = if ($PhoneNumberType -eq "mobile") { "none" } else { "inbound+outbound" }
+}
+if (-not $SmsCapability) {
+    $SmsCapability = if ($PhoneNumberType -eq "mobile") { "inbound+outbound" } else { "none" }
+}
+$needCalling = $CallingCapability -ne "none"
+$needSms = $SmsCapability -ne "none"
 
 # ---------------------------------------------------------------------------
 # Helper: Parse ACS connection string into endpoint + access key
@@ -275,6 +302,21 @@ catch {
 }
 
 if ($existingNumbers -and $existingNumbers.Count -gt 0 -and -not $Force) {
+    # Only reuse a number that actually has the capabilities we're asking for.
+    # Without this filter the SMS pass would find the voice number and skip,
+    # leaving AcsSmsNumber pointing at a number that can't send SMS.
+    $capableNumbers = @($existingNumbers | Where-Object {
+            if (-not $_.capabilities) { return $true } # CLI fallback: no capability data
+            (-not $needCalling -or $_.capabilities.calling -ne "none") -and
+            (-not $needSms -or $_.capabilities.sms -ne "none")
+        })
+    if ($capableNumbers.Count -eq 0) {
+        Write-Host "  Found $($existingNumbers.Count) number(s), but none with calling=$CallingCapability / sms=$SmsCapability. Will purchase a new one." -ForegroundColor Gray
+    }
+    $existingNumbers = $capableNumbers
+}
+
+if ($existingNumbers -and $existingNumbers.Count -gt 0 -and -not $Force) {
     # Selection priority when multiple numbers are provisioned on the ACS resource:
     #   1. -PreferredPhoneNumber (exact match) if supplied
     #   2. Newest by purchaseDate (descending)
@@ -313,8 +355,8 @@ else {
         phoneNumberType = $PhoneNumberType
         assignmentType  = "application"
         capabilities    = @{
-            calling = "inbound+outbound"
-            sms     = "none"
+            calling = $CallingCapability
+            sms     = $SmsCapability
         }
         quantity        = 1
     }
@@ -326,7 +368,7 @@ else {
     $searchJson = $searchBody | ConvertTo-Json -Depth 3
     $searchPath = "/availablePhoneNumbers/countries/$CountryCode/:search?api-version=$ACS_API_VERSION"
 
-    Write-Host "  Searching for $PhoneNumberType numbers in $CountryCode..." -ForegroundColor Gray
+    Write-Host "  Searching for $PhoneNumberType numbers in $CountryCode (calling=$CallingCapability, sms=$SmsCapability)..." -ForegroundColor Gray
 
     $searchResponse = Invoke-AcsApi -Endpoint $acs.Endpoint -AccessKey $acs.AccessKey `
         -Method "POST" -Path $searchPath -Body $searchJson -RawResponse
@@ -437,18 +479,19 @@ $caExists = az containerapp show --name $ContainerAppName --resource-group $Reso
 
 if ($caExists) {
     $ErrorActionPreference = "Continue"
+    $envArgs = @($EnvVarNames | ForEach-Object { "$_=$phoneNumber" })
     az containerapp update `
         --name $ContainerAppName `
         --resource-group $ResourceGroup `
-        --set-env-vars "AcsPhoneNumber=$phoneNumber" `
+        --set-env-vars $envArgs `
         --output none 2>&1 | Out-Null
     $ErrorActionPreference = "Stop"
 
-    Write-Host "  Container App '$ContainerAppName' configured with AcsPhoneNumber=$phoneNumber" -ForegroundColor Green
+    Write-Host "  Container App '$ContainerAppName' configured with $($envArgs -join ', ')" -ForegroundColor Green
 }
 else {
     Write-Host "  Container App '$ContainerAppName' not found - skipping config update." -ForegroundColor Yellow
-    Write-Host "  You can manually set AcsPhoneNumber=$phoneNumber later." -ForegroundColor Yellow
+    Write-Host "  You can manually set $($EnvVarNames -join '/')=$phoneNumber later." -ForegroundColor Yellow
 }
 
 # ---------------------------------------------------------------------------
@@ -459,8 +502,10 @@ if (Get-Command azd -ErrorAction SilentlyContinue) {
     $azdEnvJson = azd env list -o json 2>$null | ConvertFrom-Json -ErrorAction SilentlyContinue
     if ($azdEnvJson -and $azdEnvJson.Count -gt 0) {
         try {
-            azd env set ACS_PHONE_NUMBER $phoneNumber 2>$null
-            Write-Host "  azd env variable ACS_PHONE_NUMBER set to $phoneNumber" -ForegroundColor Green
+            foreach ($azdVar in $AzdEnvVarNames) {
+                azd env set $azdVar $phoneNumber 2>$null
+                Write-Host "  azd env variable $azdVar set to $phoneNumber" -ForegroundColor Green
+            }
         }
         catch {
             # Not running inside azd context - no action needed
@@ -476,6 +521,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Provisioning Complete" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Phone Number : $phoneNumber" -ForegroundColor White
+Write-Host "  Capabilities : calling=$CallingCapability, sms=$SmsCapability" -ForegroundColor White
+Write-Host "  Env vars     : $($EnvVarNames -join ', ')" -ForegroundColor White
 Write-Host "  ACS Resource : $AcsResourceName" -ForegroundColor White
 Write-Host "  Resource Group: $ResourceGroup" -ForegroundColor White
 Write-Host "  Container App: $ContainerAppName" -ForegroundColor White

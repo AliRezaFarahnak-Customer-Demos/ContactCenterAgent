@@ -42,16 +42,21 @@ try
     // This catches missing RBAC roles (Cognitive Services User / OpenAI User) at startup
     // rather than discovering them on the first live phone call.
     var voiceLiveEndpoint = builder.Configuration.GetValue<string>("AzureOpenAI:Endpoint");
-    var voiceLiveModel = builder.Configuration.GetValue<string>("AzureOpenAI:DeploymentName") ?? "gpt-realtime";
+    var voiceLiveModel = builder.Configuration.GetValue<string>("AzureOpenAI:DeploymentName") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.Model;
+    var probeApiVersion = builder.Configuration.GetValue<string>("AzureOpenAI:ApiVersion") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.ApiVersion;
+    var probeByomProfile = builder.Configuration.GetValue<string>("AzureOpenAI:ByomProfile") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.ByomProfile;
     if (!string.IsNullOrEmpty(voiceLiveEndpoint))
     {
-        var wsUrl = new Uri($"{voiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version=2025-10-01&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}");
+        // Must mirror AzureVoiceLiveService's URL exactly, or the probe validates a
+        // different model than the one calls actually use.
+        var probeProfileParam = string.IsNullOrWhiteSpace(probeByomProfile) ? "" : $"&profile={probeByomProfile}";
+        var wsUrl = new Uri($"{voiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version={probeApiVersion}&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}{probeProfileParam}");
         using var probeWs = new System.Net.WebSockets.ClientWebSocket();
         probeWs.Options.SetRequestHeader("Authorization", $"Bearer {tokenResult.Token}");
         using var probeCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await probeWs.ConnectAsync(wsUrl, probeCts.Token);
         await probeWs.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "startup probe", CancellationToken.None);
-        Console.WriteLine($"✓ Voice Live WebSocket probe OK (model: {voiceLiveModel})");
+        Console.WriteLine($"✓ Voice Live WebSocket probe OK (model: {voiceLiveModel}, api-version: {probeApiVersion}, profile: {(string.IsNullOrWhiteSpace(probeByomProfile) ? "(none)" : probeByomProfile)})");
     }
 }
 catch (System.Net.WebSockets.WebSocketException ex) when (ex.Message.Contains("401"))
@@ -71,6 +76,8 @@ var callPrompts = new ConcurrentDictionary<string, string>();
 var callLanguages = new ConcurrentDictionary<string, string>();
 var callLanguageCodes = new ConcurrentDictionary<string, string>();
 var callTranscriptionHints = new ConcurrentDictionary<string, string>();
+var callVoices = new ConcurrentDictionary<string, string>();
+var callVoiceStyles = new ConcurrentDictionary<string, string>();
 var callPhoneNumbers = new ConcurrentDictionary<string, string>();
 // Track active call connection IDs (keyed by WebSocket contextId)
 var callConnections = new ConcurrentDictionary<string, string>();
@@ -165,6 +172,15 @@ app.MapPost("/api/outboundCall", async (
     if (!string.IsNullOrEmpty(request.TranscriptionHint))
     {
         callTranscriptionHints[contextId] = request.TranscriptionHint;
+    }
+    if (!string.IsNullOrEmpty(request.Voice))
+    {
+        callVoices[contextId] = request.Voice;
+    }
+    // Empty string is meaningful here ("no style"), so only a null skips the override.
+    if (request.VoiceStyle is not null)
+    {
+        callVoiceStyles[contextId] = request.VoiceStyle;
     }
 
     // Create a transcription channel for this call so the SSE endpoint can stream events
@@ -428,6 +444,8 @@ app.MapPost("/api/callbacks/{contextId}", async (
             callLanguages.TryRemove(contextId, out _);
             callLanguageCodes.TryRemove(contextId, out _);
             callTranscriptionHints.TryRemove(contextId, out _);
+            callVoices.TryRemove(contextId, out _);
+            callVoiceStyles.TryRemove(contextId, out _);
             callConnections.TryRemove(contextId, out _);
 
             // Complete the transcription channel so SSE consumers know the call ended
@@ -494,6 +512,8 @@ app.Use(async (context, next) =>
                 string? callLanguageCode = null;
                 string? callTranscriptionHint = null;
                 string? callPhoneNumber = null;
+                string? callVoice = null;
+                string? callVoiceStyle = null;
                 var wsContextId = context.Request.Query["contextId"].FirstOrDefault();
                 if (!string.IsNullOrEmpty(wsContextId))
                 {
@@ -520,6 +540,16 @@ app.Use(async (context, next) =>
                     if (callPhoneNumbers.TryGetValue(wsContextId, out var phone))
                     {
                         callPhoneNumber = phone;
+                    }
+                    if (callVoices.TryGetValue(wsContextId, out var voice))
+                    {
+                        callVoice = voice;
+                        logger.LogInformation("Using per-call voice '{Voice}' for context {ContextId}", voice, wsContextId);
+                    }
+                    if (callVoiceStyles.TryGetValue(wsContextId, out var voiceStyle))
+                    {
+                        callVoiceStyle = voiceStyle;
+                        logger.LogInformation("Using per-call voice style '{Style}' for context {ContextId}", string.IsNullOrEmpty(voiceStyle) ? "(none)" : voiceStyle, wsContextId);
                     }
                 }
 
@@ -550,7 +580,9 @@ app.Use(async (context, next) =>
                     telemetryClient,
                     callPhoneNumber,
                     transcriptionWriter,
-                    analysisWriter);
+                    analysisWriter,
+                    callVoice,
+                    callVoiceStyle);
 
                 // Register hang-up callback so the AI can disconnect the call
                 if (!string.IsNullOrEmpty(wsContextId))
@@ -762,6 +794,6 @@ app.MapGet("/api/calls/history", (ILogger<Program> logger) =>
 
 app.Run();
 
-record OutboundCallRequest(string PhoneNumber, string? Purpose, string? SystemPrompt, string? Name, string? Language, string? LanguageCode, string? TranscriptionHint);
+record OutboundCallRequest(string PhoneNumber, string? Purpose, string? SystemPrompt, string? Name, string? Language, string? LanguageCode, string? TranscriptionHint, string? Voice, string? VoiceStyle);
 public record TranscriptionEvent(string Speaker, string Text, DateTime Timestamp);
 public record CallLogEntry(string Direction, string PhoneNumber, string Status, string ContextId, string? Name, string? Purpose, DateTimeOffset Timestamp);

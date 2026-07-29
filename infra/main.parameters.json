@@ -16,6 +16,9 @@
     },
     "acsPhoneNumber": {
       "value": "${ACS_PHONE_NUMBER=}"
+    },
+    "acsSmsNumber": {
+      "value": "${ACS_SMS_NUMBER=}"
     }
   }
 }

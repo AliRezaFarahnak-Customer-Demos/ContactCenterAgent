@@ -5,6 +5,13 @@ const { sessions, addSession, removeSession, clearEnded, toggleExpanded } =
 const config = useRuntimeConfig();
 const callError = ref<string | null>(null);
 
+// Inbound number customers can ring — served by the API so it's never hardcoded here.
+const { data: inboundPhone } = useFetch<{
+  configured: boolean;
+  display: string;
+  telHref: string;
+}>("/api/phone-number");
+
 // ---------------------------------------------------------------------------
 // Place a call via the form
 // ---------------------------------------------------------------------------
@@ -16,6 +23,8 @@ async function startCallFromComposer(payload: {
   prompt: string;
   language: string;
   languageCode: string;
+  voice: string;
+  voiceStyle: string;
 }) {
   callError.value = null;
   try {
@@ -67,11 +76,13 @@ const activeCount = computed(
 </script>
 
 <template>
-  <div class="flex h-dvh w-screen bg-norlys-sand text-norlys-ink font-body">
+  <div
+    class="flex h-dvh w-screen bg-norlys-sand text-norlys-ink font-body gap-3 p-3 pt-[3.75rem]"
+  >
     <!-- ============== TOP BAR ============== -->
     <!-- Per Norlys CVI: logo sits in the top-right corner of the layout. -->
     <header
-      class="fixed top-0 inset-x-0 h-12 z-30 bg-white border-b border-norlys-light-petroleum flex items-center px-4 gap-4"
+      class="fixed top-0 inset-x-0 h-12 z-30 bg-white flex items-center px-4 gap-4"
     >
       <!-- Official Norlys logo (Norlys_Logotype_RGB.svg, used with permission) -->
       <img
@@ -87,6 +98,28 @@ const activeCount = computed(
         <span class="w-1.5 h-1.5 rounded-full bg-norlys-red animate-pulse" />
         {{ activeCount }} aktivt opkald
       </div>
+      <a
+        v-if="inboundPhone?.configured"
+        :href="inboundPhone.telHref"
+        class="flex items-center gap-1.5 text-sm text-norlys-petroleum hover:text-norlys-red focus-visible:text-norlys-red transition-colors"
+        :aria-label="`Ring til Norlys på ${inboundPhone.display}`"
+      >
+        <svg
+          class="w-4 h-4 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path
+            d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"
+          />
+        </svg>
+        <span class="tabular-nums font-medium">{{ inboundPhone.display }}</span>
+      </a>
       <div class="flex-1" />
       <span
         class="font-headline text-base font-bold text-norlys-petroleum-3 hidden sm:inline"
@@ -95,17 +128,15 @@ const activeCount = computed(
     </header>
 
     <!-- ============== LEFT — CALL COMPOSER ============== -->
-    <div class="hidden lg:flex pt-12 flex-1 min-w-0 h-full">
+    <div class="hidden lg:flex flex-1 min-w-0 h-full">
       <CallComposer @call="startCallFromComposer" />
     </div>
 
     <!-- ============== CENTER — CALL SESSIONS (sentiment UI) ============== -->
     <aside
-      class="hidden lg:flex flex-col w-[28rem] xl:w-[34rem] 2xl:w-[40rem] shrink-0 h-full pt-12 border-l border-norlys-light-petroleum bg-white"
+      class="hidden lg:flex flex-col w-[28rem] xl:w-[34rem] 2xl:w-[40rem] shrink-0 h-full bg-white rounded-xl overflow-hidden"
     >
-      <div
-        class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center justify-between"
-      >
+      <div class="px-4 py-3 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span
             class="font-headline text-base font-bold text-norlys-petroleum-3"

@@ -32,6 +32,8 @@ namespace CallAutomation.AzureAI.VoiceLive
         private readonly string? m_language;
         private readonly string? m_languageCode;
         private readonly string? m_transcriptionHint;
+        private readonly string? m_callVoice;
+        private readonly string? m_callVoiceStyle;
         private readonly Azure.Core.TokenCredential m_credential;
         private readonly TelemetryClient? m_telemetryClient;
         private readonly string? m_phoneNumber;
@@ -47,6 +49,7 @@ namespace CallAutomation.AzureAI.VoiceLive
         // id is the actual farewell.
         private string? m_hangUpResponseId;
         private long m_farewellAudioBytes;
+        private DateTime? m_farewellFirstAudioUtc;
         private bool m_farewellDisconnectScheduled;
         // Greeting protection state.
         // m_greetingInFlight: client-side gate — ignore VAD events during greeting playback.
@@ -59,6 +62,8 @@ namespace CallAutomation.AzureAI.VoiceLive
         private bool m_greetingInFlight = true;
         private bool m_greetingDelayScheduled;
         private long m_greetingAudioBytesSent;
+        // Wall-clock of the first streamed frame — playback start, which precedes response.done.
+        private DateTime? m_greetingFirstAudioUtc;
         private readonly ChannelWriter<TranscriptionEvent>? m_transcriptionWriter;
         private readonly ChannelWriter<AnalysisResult>? m_analysisWriter;
         private readonly IConfiguration m_configuration;
@@ -85,7 +90,9 @@ namespace CallAutomation.AzureAI.VoiceLive
             TelemetryClient? telemetryClient = null,
             string? phoneNumber = null,
             ChannelWriter<TranscriptionEvent>? transcriptionWriter = null,
-            ChannelWriter<AnalysisResult>? analysisWriter = null)
+            ChannelWriter<AnalysisResult>? analysisWriter = null,
+            string? callVoice = null,
+            string? callVoiceStyle = null)
         {
             m_mediaStreaming = mediaStreaming;
             m_configuration = configuration;
@@ -99,6 +106,8 @@ namespace CallAutomation.AzureAI.VoiceLive
             m_transcriptionHint = callTranscriptionHint;
             m_transcriptionWriter = transcriptionWriter;
             m_analysisWriter = analysisWriter;
+            m_callVoice = callVoice;
+            m_callVoiceStyle = callVoiceStyle;
 
             // Use per-call system prompt VERBATIM if provided. The admin-chat backend is the
             // single source of truth for the prompt — we don't append, prepend, or modify.
@@ -126,11 +135,16 @@ namespace CallAutomation.AzureAI.VoiceLive
 
                 var voiceLiveModel = configuration.GetValue<string>("AzureOpenAI:DeploymentName") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.Model;
                 var apiVersion = configuration.GetValue<string>("AzureOpenAI:ApiVersion") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.ApiVersion;
+                var byomProfile = configuration.GetValue<string>("AzureOpenAI:ByomProfile") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.ByomProfile;
 
-                m_logger.LogInformation("Connecting to Azure Voice Live: {Endpoint}, model: {Model}, apiVersion: {ApiVersion}", azureVoiceLiveEndpoint, voiceLiveModel, apiVersion);
+                // Only models Voice Live pre-hosts work without a profile; ours is self-deployed.
+                var profileParam = string.IsNullOrWhiteSpace(byomProfile) ? "" : $"&profile={byomProfile}";
+
+                m_logger.LogInformation("Connecting to Azure Voice Live: {Endpoint}, model: {Model}, apiVersion: {ApiVersion}, byomProfile: {Profile}",
+                    azureVoiceLiveEndpoint, voiceLiveModel, apiVersion, string.IsNullOrWhiteSpace(byomProfile) ? "(none)" : byomProfile);
 
                 var azureVoiceLiveWebsocketUrl = new Uri(
-                    $"{azureVoiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version={apiVersion}&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}");
+                    $"{azureVoiceLiveEndpoint.TrimEnd('/').Replace("https", "wss")}/voice-live/realtime?api-version={apiVersion}&x-ms-client-request-id={Guid.NewGuid()}&model={voiceLiveModel}{profileParam}");
 
                 // Try connecting with the cached token first. If we get a 401 (stale token
                 // after container restart / deployment), force-refresh and retry once.
@@ -243,9 +257,12 @@ namespace CallAutomation.AzureAI.VoiceLive
                 isEnglish ? "VoiceLive:Vad:SilenceDurationMsEnglish" : "VoiceLive:Vad:SilenceDurationMsOther",
                 ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.VadSilenceDurationMs);
 
+            var reasoningEffort = m_configuration.GetValue<string>("VoiceLive:ReasoningEffort")
+                ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.ReasoningEffort;
+
             m_logger.LogInformation(
-                "VAD config: type={Type}, threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, language={Lang}",
-                vadType, vadThreshold, vadPrefixPaddingMs, vadSilenceMs, m_languageCode ?? "(auto)");
+                "VAD config: type={Type}, threshold={Threshold}, prefix={Prefix}ms, silence={Silence}ms, language={Lang}, reasoning={Reasoning}",
+                vadType, vadThreshold, vadPrefixPaddingMs, vadSilenceMs, m_languageCode ?? "(auto)", reasoningEffort);
 
             var jsonObject = new
             {
@@ -259,6 +276,9 @@ namespace CallAutomation.AzureAI.VoiceLive
                     input_audio_format = "pcm16",
                     output_audio_format = "pcm16",
                     instructions = effectivePrompt,
+                    // Keep chain-of-thought short — on PSTN, reply latency matters more than depth.
+                    // Verify it's actually doing anything via usage.output_token_details.reasoning_tokens.
+                    reasoning_effort = reasoningEffort,
                     // During greeting (m_greetingInFlight=true) we send:
                     //   - interrupt_response=false  → server won't cancel TTS on user speech
                     //   - create_response=false     → server won't auto-fire AI's next turn
@@ -289,7 +309,8 @@ namespace CallAutomation.AzureAI.VoiceLive
                             threshold = vadThreshold,
                             prefix_padding_ms = vadPrefixPaddingMs,
                             silence_duration_ms = vadSilenceMs,
-                            auto_truncate = true
+                            auto_truncate = true,
+                            appended_text_after_truncation = ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.TruncationNotice
                         },
                     // No max_response_output_tokens cap — danish-voice-lab doesn't set one and
                     // we want identical behaviour. The system prompt's "1-2 sentences" rule
@@ -297,7 +318,16 @@ namespace CallAutomation.AzureAI.VoiceLive
                     input_audio_noise_reduction = new { type = "azure_deep_noise_suppression" },
                     input_audio_echo_cancellation = new { type = "server_echo_cancellation" },
                     input_audio_transcription = BuildTranscriptionConfig(m_configuration, m_languageCode, m_transcriptionHint, m_logger),
-                    voice = BuildVoiceConfig(m_configuration, m_logger),
+                    voice = BuildVoiceConfig(m_configuration, m_logger, m_callVoice, m_callVoiceStyle),
+                    // Echoed into Foundry resource logs, so a Foundry trace can be tied back to the ACS call.
+                    metadata = new Dictionary<string, string>
+                    {
+                        ["phone_number"] = m_phoneNumber ?? "",
+                        ["language"] = m_languageCode ?? "da-DK",
+                        ["voice"] = m_callVoice
+                            ?? m_configuration.GetValue<string>("Voice:Name")
+                            ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceName
+                    },
                     tools = new[]
                     {
                         new
@@ -342,12 +372,17 @@ namespace CallAutomation.AzureAI.VoiceLive
         /// caller-agent and danish-voice-lab inherit the same voice/temperature
         /// without duplicate constants.
         /// </summary>
-        private static Dictionary<string, object> BuildVoiceConfig(IConfiguration configuration, ILogger logger)
+        private static Dictionary<string, object> BuildVoiceConfig(IConfiguration configuration, ILogger logger, string? callVoice = null, string? callVoiceStyle = null)
         {
             var voiceType = configuration.GetValue<string>("Voice:Type") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceType;
-            var voiceName = configuration.GetValue<string>("Voice:Name") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceName;
+            // Per-call selection from the admin UI wins over appsettings, which wins over shared defaults.
+            var voiceName = callVoice
+                ?? configuration.GetValue<string>("Voice:Name")
+                ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceName;
             var voiceTemp = configuration.GetValue<double>("Voice:Temperature", ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceTemperature);
-            var voiceStyle = configuration.GetValue<string>("Voice:Style") ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceStyle;
+            var voiceStyle = callVoiceStyle
+                ?? configuration.GetValue<string>("Voice:Style")
+                ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceStyle;
             var voiceEndpointId = configuration.GetValue<string>("Voice:EndpointId");
 
             var voice = new Dictionary<string, object>
@@ -396,6 +431,13 @@ namespace CallAutomation.AzureAI.VoiceLive
                         ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceLocale;
                     if (!string.IsNullOrWhiteSpace(voiceLocale))
                         voice["locale"] = voiceLocale;
+
+                    // Pins the accent on English loanwords inside Danish sentences ("router",
+                    // "streaming", "bredbånd"). Unset = unpredictable accent per the API reference.
+                    var preferLocales = configuration.GetSection("Voice:PreferLocales").Get<string[]>()
+                        ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultPreferLocales;
+                    if (preferLocales.Length > 0)
+                        voice["prefer_locales"] = preferLocales;
                     break;
             }
 
@@ -563,6 +605,7 @@ namespace CallAutomation.AzureAI.VoiceLive
                             var audioBytes = Convert.FromBase64String(data["delta"].ToString()!);
                             if (m_greetingInFlight)
                             {
+                                m_greetingFirstAudioUtc ??= DateTime.UtcNow;
                                 m_greetingAudioBytesSent += audioBytes.Length;
                             }
                             // While waiting for the farewell, count bytes from any response
@@ -571,6 +614,7 @@ namespace CallAutomation.AzureAI.VoiceLive
                             // to the farewell). Used to compute realistic playback duration.
                             if (m_pendingHangUp)
                             {
+                                m_farewellFirstAudioUtc ??= DateTime.UtcNow;
                                 m_farewellAudioBytes += audioBytes.Length;
                             }
                             var jsonString = OutStreamingData.GetAudioDataForOutbound(audioBytes);
@@ -725,9 +769,23 @@ namespace CallAutomation.AzureAI.VoiceLive
                         {
                             // Log response.done detail for debugging premature disconnects
                             var responseDoneDetail = data.ContainsKey("response") ? data["response"]?.ToString() : "";
+
+                            // Surfaced separately because response_detail is truncated at 1000 chars and
+                            // usage sits after the output array. 0 on every turn = reasoning_effort is inert.
+                            var reasoningTokens = "n/a";
+                            if (data.ContainsKey("response") && data["response"] is JsonElement usageRespElem &&
+                                usageRespElem.ValueKind == JsonValueKind.Object &&
+                                usageRespElem.TryGetProperty("usage", out var usageElem) &&
+                                usageElem.TryGetProperty("output_token_details", out var outDetailsElem) &&
+                                outDetailsElem.TryGetProperty("reasoning_tokens", out var reasoningElem))
+                            {
+                                reasoningTokens = reasoningElem.ToString();
+                            }
+
                             m_telemetryClient?.TrackEvent("VoiceLiveResponseDone", new Dictionary<string, string>
                             {
                                 { "voice_live.pending_hangup", m_pendingHangUp.ToString() },
+                                { "voice_live.reasoning_tokens", reasoningTokens },
                                 { "voice_live.response_detail", responseDoneDetail?[..Math.Min(1000, responseDoneDetail?.Length ?? 0)] ?? "" },
                                 { "chat.phone_number", m_phoneNumber ?? "" }
                             });
@@ -763,13 +821,17 @@ namespace CallAutomation.AzureAI.VoiceLive
                                 const int VoiceLiveBytesPerSecond = 24000 * 2;
                                 const int SafetyTailMs = 500;
                                 var bytesSnapshot = m_farewellAudioBytes;
-                                var playbackMs = (int)(bytesSnapshot * 1000L / VoiceLiveBytesPerSecond) + SafetyTailMs;
-                                // Floor: 1.5s in case bytes counter is unexpectedly 0.
-                                // Ceiling: 8s — a Norlys farewell is never longer than that.
-                                playbackMs = Math.Clamp(playbackMs, 1500, 8000);
+                                var audioMs = (int)(bytesSnapshot * 1000L / VoiceLiveBytesPerSecond);
+                                // Playback started at the first streamed frame, so only the remainder is left to wait.
+                                var elapsedMs = m_farewellFirstAudioUtc is { } farewellStart
+                                    ? (int)(DateTime.UtcNow - farewellStart).TotalMilliseconds
+                                    : 0;
+                                var playbackMs = Math.Max(audioMs - elapsedMs, 0) + SafetyTailMs;
+                                // Floor guards a zero byte counter; ceiling: a Norlys farewell is never longer.
+                                playbackMs = Math.Clamp(playbackMs, 1000, 8000);
                                 m_logger.LogInformation(
-                                    "Farewell response.done ({ResponseId}) — disconnecting in {Delay}ms while {Bytes} bytes finish playing",
-                                    thisResponseId ?? "<unknown>", playbackMs, bytesSnapshot);
+                                    "Farewell response.done ({ResponseId}) — audio={AudioMs}ms, alreadyPlayed={ElapsedMs}ms, disconnecting in {Delay}ms ({Bytes} bytes)",
+                                    thisResponseId ?? "<unknown>", audioMs, elapsedMs, playbackMs, bytesSnapshot);
                                 await Task.Delay(playbackMs);
 
                                 if (m_onHangUp != null)
@@ -799,10 +861,17 @@ namespace CallAutomation.AzureAI.VoiceLive
                                 const int VoiceLiveBytesPerSecond = 24000 * 2;
                                 const int SafetyTailMs = 300;
                                 var bytesSnapshot = m_greetingAudioBytesSent;
-                                var playbackMs = (int)(bytesSnapshot * 1000L / VoiceLiveBytesPerSecond) + SafetyTailMs;
+                                var audioMs = (int)(bytesSnapshot * 1000L / VoiceLiveBytesPerSecond);
+                                // Playback started at the first streamed frame, so only the remainder is left
+                                // to wait. Holding the full duration from here adds dead air equal to however
+                                // much of the greeting the phone has already played.
+                                var elapsedMs = m_greetingFirstAudioUtc is { } greetingStart
+                                    ? (int)(DateTime.UtcNow - greetingStart).TotalMilliseconds
+                                    : 0;
+                                var playbackMs = Math.Max(audioMs - elapsedMs, 0) + SafetyTailMs;
                                 m_logger.LogInformation(
-                                    "Greeting response.done; holding protection {DelayMs}ms while {Bytes} bytes finish playing",
-                                    playbackMs, bytesSnapshot);
+                                    "Greeting response.done; audio={AudioMs}ms, alreadyPlayed={ElapsedMs}ms, holding protection {DelayMs}ms ({Bytes} bytes)",
+                                    audioMs, elapsedMs, playbackMs, bytesSnapshot);
                                 _ = Task.Run(async () =>
                                 {
                                     try

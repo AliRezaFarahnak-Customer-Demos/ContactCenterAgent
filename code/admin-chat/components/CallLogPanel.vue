@@ -80,12 +80,10 @@ function getDirectionColor(entry: CallLogEntry): string {
 
 <template>
   <aside
-    class="w-full h-full border-l border-norlys-light-petroleum overflow-hidden flex flex-col shrink-0 bg-white"
+    class="w-full h-full overflow-hidden flex flex-col shrink-0 bg-white rounded-xl"
   >
     <!-- Header -->
-    <div
-      class="px-4 py-3 border-b border-norlys-light-petroleum flex items-center justify-between"
-    >
+    <div class="px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <!-- Phone icon -->
         <svg

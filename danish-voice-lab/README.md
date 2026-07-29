@@ -16,24 +16,31 @@ Speak Danish. Press `Ctrl+C` to quit.
 
 ## What to tweak
 
-All the knobs live at the top of [`Program.cs`](Program.cs) inside the `LabSettings` block:
+Defaults live in `code/shared/ContactCenterAgent.Shared/VoiceLive/VoiceLiveDefaults.cs` (shared with
+caller-agent). Override them for the lab only in [`appsettings.json`](appsettings.json):
 
-| Setting              | Try changing it to…                                                                |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `Voice`              | `da-DK-JeppeNeural`, `da-DK-ChristelNeural`, `alloy`, `verse`, `marin`             |
-| `Instructions`       | Give the AI a different persona — formal, kid-friendly, customer-support, etc.     |
-| `Model`              | `gpt-4o-realtime-preview`, `gpt-realtime`, `gpt-realtime-1.5`                      |
-| `VadThreshold`       | Lower (0.1) = picks up quieter speech; higher (0.6) = ignores background noise     |
-| `VadSilenceDuration` | Shorter (200ms) = AI interrupts faster; longer (1000ms) = waits for full sentences |
+| Setting              | Try changing it to…                                                                 |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `Voice`              | `da-DK-Jeppe:DragonHDOmniLatestNeural`, `da-DK-ChristelNeural`, `da-DK-JeppeNeural` |
+| `Voice:Style`        | HD Omni styles: `reassuring`, `calm`, `confident`, `encouraging`, `appreciative`    |
+| `Voice:Temperature`  | 0.0–1.0 — HD voices only. 0.7 = calm service; 0.8 = more variation                  |
+| `PersonaId`          | Any id in the root `personas.json`                                                  |
+| `VadThreshold`       | Lower (0.1) = picks up quieter speech; higher (0.6) = ignores background noise      |
+| `VadSilenceDuration` | Shorter (200ms) = AI interrupts faster; longer (1000ms) = waits for full sentences  |
+
+Those four voice names are the **only** `da-DK` voices in Azure TTS — there is no Danish
+DragonHD (non-Omni), MAI-Voice, or `azure-realtime-native` voice. Style/temperature apply to the
+HD Omni pair only; the plain `*Neural` voices ignore both.
 
 Edit, save, `dotnet run` again.
 
 ## Going to the phone
 
-Once a config feels right here, copy the equivalent values into:
-
-- `code/caller-agent/agent/AzureVoiceLiveService.cs` — model, voice, VAD
-- `code/caller-agent/agent/appsettings.json` — instructions / system prompt
+Once a config feels right here, promote it by editing the shared defaults in
+`code/shared/ContactCenterAgent.Shared/VoiceLive/VoiceLiveDefaults.cs` — caller-agent and this lab
+both read from it, so one edit covers both. Only pin a prod-specific override in
+`code/caller-agent/agent/appsettings.json` (`Voice:Name` / `Voice:Temperature` / `Voice:Style`) when
+prod should deliberately differ from the lab. Redeploy with `azd deploy caller-agent`.
 
 Note the phone uses **8 kHz G.711** (PSTN) instead of the **24 kHz PCM16** used here, so transcription quality on the phone will be lower than on your laptop — but the _behaviour_ (persona, turn-taking) ports 1:1.
 

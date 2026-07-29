@@ -197,7 +197,7 @@ function valueLabelClass(value: number | null) {
     </button>
 
     <!-- Expanded body — simple two-metric live snapshot -->
-    <div v-if="session.expanded" class="border-t border-norlys-light-petroleum">
+    <div v-if="session.expanded">
       <div class="px-4 py-4 space-y-3">
         <div
           v-for="m in metrics"
@@ -233,7 +233,7 @@ function valueLabelClass(value: number | null) {
 
       <!-- Footer actions -->
       <div
-        class="flex items-center justify-end gap-2 px-3 py-2 border-t border-norlys-light-petroleum bg-norlys-sand-2/50"
+        class="flex items-center justify-end gap-2 px-3 py-2 bg-norlys-sand-2/50"
       >
         <button
           v-if="session.status === 'ended'"

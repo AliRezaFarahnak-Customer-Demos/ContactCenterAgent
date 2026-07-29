@@ -18,7 +18,11 @@ ENV NUXT_PUBLIC_APPINSIGHTS_CONNECTION_STRING=$NUXT_PUBLIC_APPINSIGHTS_CONNECTIO
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+# Use `npm install` (not `npm ci`): the dev machine is ARM64 Windows, so a
+# lock generated there omits the linux/amd64 native deps (@emnapi, @rolldown
+# bindings) that this build needs. `npm install` reconciles them on the real
+# target platform; `npm ci`'s strict cross-platform lock check would fail.
+RUN npm install --ignore-scripts --no-audit --no-fund
 
 COPY nuxt.config.ts tsconfig.json tailwind.config.ts .version.json ./
 COPY app.vue ./

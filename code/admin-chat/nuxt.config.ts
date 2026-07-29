@@ -24,6 +24,9 @@ export default defineNuxtConfig({
       process.env.NUXT_CALLER_AGENT_URL ||
       process.env.CALLER_AGENT_URL ||
       "http://localhost:5000",
+    // Inbound ACS number shown in the UI. Injected by Bicep; empty until provisioned.
+    acsPhoneNumber:
+      process.env.NUXT_ACS_PHONE_NUMBER || process.env.ACS_PHONE_NUMBER || "",
     public: {
       appVersion: version.appVersion,
       buildNumber: String(version.buildNumber),
