@@ -610,7 +610,9 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
       ]
       scale: {
         minReplicas: 1
-        maxReplicas: 10
+        // Pinned to 1: the outreach store falls back to in-memory when the tenant policy blocks
+        // Cosmos public access, and in-memory state must live on a single replica to stay consistent.
+        maxReplicas: 1
       }
     }
   }

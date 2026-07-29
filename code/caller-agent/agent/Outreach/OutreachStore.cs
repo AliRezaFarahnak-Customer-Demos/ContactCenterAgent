@@ -39,7 +39,21 @@ public sealed class OutreachStore
             ConnectionMode = ConnectionMode.Direct
         });
         _container = client.GetContainer(databaseName, containerName);
-        _logger.LogInformation("OutreachStore using Cosmos DB {Database}/{Container}", databaseName, containerName);
+
+        // A tenant Azure Policy may disable public network access on Cosmos, which 403s every
+        // request from the Container App's public egress. Probe once at startup; if Cosmos is
+        // unreachable, fall back to the in-memory store so the demo keeps working end-to-end.
+        try
+        {
+            using var probeCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            _container.ReadContainerAsync(cancellationToken: probeCts.Token).GetAwaiter().GetResult();
+            _logger.LogInformation("OutreachStore using Cosmos DB {Database}/{Container}", databaseName, containerName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cosmos unreachable — falling back to in-memory OutreachStore (data not durable).");
+            _container = null;
+        }
     }
 
     public async Task UpsertAsync(OutreachRecord record)
