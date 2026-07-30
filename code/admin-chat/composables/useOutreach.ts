@@ -139,6 +139,22 @@ export function useOutreach() {
     }
   }
 
+  // Real agent-to-customer follow-up on an existing thread (SMS/email actually sent).
+  async function sendFollowUp(
+    outreachId: string,
+    message: string,
+  ): Promise<boolean> {
+    try {
+      await $fetch(`/api/outreach/${encodeURIComponent(outreachId)}/followup`, {
+        method: "POST",
+        body: { message },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return {
     channels,
     customers,
@@ -150,5 +166,6 @@ export function useOutreach() {
     startOutreach,
     getResult,
     simulateReply,
+    sendFollowUp,
   };
 }

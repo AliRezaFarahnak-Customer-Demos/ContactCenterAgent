@@ -16,6 +16,7 @@ const {
   loadMcpUrl,
   startOutreach,
   simulateReply,
+  sendFollowUp,
 } = useOutreach();
 
 const channel = ref<"voice" | "sms" | "email">("sms");
@@ -108,6 +109,40 @@ async function sendReply(c: CustomerSummary) {
   } finally {
     replying.value = null;
   }
+}
+
+const followUpText = reactive<Record<string, string>>({});
+const followingUp = ref<string | null>(null);
+
+// Real outbound follow-up from the agent on the customer's latest thread.
+async function sendFollowUpTo(c: CustomerSummary) {
+  const text = (followUpText[c.customerId] || "").trim();
+  const recs = timelines[c.customerId] || [];
+  const latest = recs[recs.length - 1];
+  if (!text || !latest) return;
+  followingUp.value = c.customerId;
+  try {
+    if (await sendFollowUp(latest.outreachId, text)) {
+      followUpText[c.customerId] = "";
+      timelines[c.customerId] = await loadTimeline(c.customerId);
+      await loadCustomers();
+    }
+  } finally {
+    followingUp.value = null;
+  }
+}
+
+// Sentiment metrics worth surfacing in the timeline (0-6 scale, 3 = neutral).
+const metricLabels: Record<string, string> = {
+  satisfaction: "Tilfredshed",
+  problem_solved: "Problem løst",
+  churn_risk: "Churn-risiko",
+};
+function metricChips(rec: OutreachResult): { label: string; value: string }[] {
+  if (!rec.metrics) return [];
+  return Object.entries(metricLabels)
+    .filter(([k]) => rec.metrics![k] !== undefined)
+    .map(([k, label]) => ({ label, value: `${rec.metrics![k]}/6` }));
 }
 
 function copyMcp() {
@@ -357,6 +392,43 @@ onBeforeUnmount(() => timer && clearInterval(timer));
               >
                 {{ rec.summary }}
               </div>
+              <div
+                v-if="metricChips(rec).length"
+                class="flex flex-wrap gap-1"
+              >
+                <span
+                  v-for="m in metricChips(rec)"
+                  :key="m.label"
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white text-[10px] text-norlys-petroleum-3 tabular-nums"
+                >
+                  {{ m.label }} {{ m.value }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Send a real follow-up to the customer on their latest thread. -->
+            <div
+              v-if="(timelines[c.customerId] || []).length"
+              class="flex gap-1.5 pt-1"
+            >
+              <input
+                v-model="followUpText[c.customerId]"
+                type="text"
+                placeholder="Send opfølgning til kunden…"
+                class="flex-1 px-2.5 py-1.5 rounded-lg bg-white text-[12px] text-norlys-ink placeholder:text-norlys-petroleum/50 focus:outline-none focus:ring-2 focus:ring-norlys-petroleum/30"
+                @keyup.enter="sendFollowUpTo(c)"
+              />
+              <button
+                type="button"
+                :disabled="
+                  followingUp === c.customerId ||
+                  !(followUpText[c.customerId] || '').trim()
+                "
+                class="px-3 py-1.5 rounded-lg bg-norlys-red text-norlys-sand text-[11px] font-semibold hover:bg-norlys-red/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                @click="sendFollowUpTo(c)"
+              >
+                {{ followingUp === c.customerId ? "…" : "Send" }}
+              </button>
             </div>
 
             <!-- Simulate a customer reply so the two-way thread shows (demo aid). -->

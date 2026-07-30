@@ -191,14 +191,17 @@ public sealed class OutreachService
     public async Task<OutreachResult> StartAsync(OutreachRequest req)
     {
         var channel = ResolveChannel(req);
-        var customerId = FirstNonEmpty(req.Customer.Id, req.Customer.Phone, req.Customer.Email) ?? Guid.NewGuid().ToString("N");
+        // Normalized so inbound replies (whose casing the carrier/Exchange controls) match.
+        var phone = NormalizeAddress(req.Customer.Phone);
+        var email = NormalizeAddress(req.Customer.Email);
+        var customerId = FirstNonEmpty(req.Customer.Id, phone, email) ?? Guid.NewGuid().ToString("N");
 
         var record = new OutreachRecord
         {
             CustomerId = customerId,
             CustomerName = req.Customer.Name,
-            Phone = req.Customer.Phone,
-            Email = req.Customer.Email,
+            Phone = phone,
+            Email = email,
             Channel = channel,
             Intent = req.Intent,
             Message = req.Message,
@@ -231,14 +234,14 @@ public sealed class OutreachService
                     break;
 
                 case "sms":
-                    record.Status = await DeliverAsync("sms", req.Customer.Phone, null, messageText, "")
+                    record.Status = await DeliverAsync("sms", phone, null, messageText, "")
                         ? "awaiting_reply" : "completed";
                     record.Interactions.Add(new Interaction { Channel = "sms", Direction = "outbound", Text = messageText });
                     break;
 
                 case "email":
                     var subject = req.Context is not null && req.Context.TryGetValue("subject", out var s) ? s : "Norlys – vi vil gerne i kontakt";
-                    await DeliverAsync("email", null, req.Customer.Email, messageText, subject);
+                    await DeliverAsync("email", null, email, messageText, subject);
                     record.Interactions.Add(new Interaction { Channel = "email", Direction = "outbound", Text = $"{subject}\n\n{messageText}" });
                     record.Status = "awaiting_reply";
                     break;
@@ -385,7 +388,7 @@ public sealed class OutreachService
     /// </summary>
     public async Task<bool> TryHandleInboundEmailAsync(string from, string subject, string body)
     {
-        var record = await _store.FindLatestAwaitingReplyAsync(from);
+        var record = await _store.FindLatestAwaitingReplyAsync(NormalizeAddress(from)!);
         if (record is null) return false;
         await AppendInboundAsync(record, "email", string.IsNullOrWhiteSpace(subject) ? body : $"{subject}\n\n{body}");
         return true;
@@ -393,6 +396,7 @@ public sealed class OutreachService
 
     private async Task HandleInboundAsync(string channel, string from, string text)
     {
+        from = NormalizeAddress(from)!;
         var record = await _store.FindLatestAwaitingReplyAsync(from)
             // Unmatched inbound — still capture it so nothing is lost in the timeline.
             ?? new OutreachRecord
@@ -597,6 +601,14 @@ public sealed class OutreachService
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+    /// <summary>Lowercase emails, trim everything — reply matching must not depend on sender casing.</summary>
+    private static string? NormalizeAddress(string? address)
+    {
+        if (string.IsNullOrWhiteSpace(address)) return null;
+        var a = address.Trim();
+        return a.Contains('@') ? a.ToLowerInvariant() : a;
+    }
 
     private async Task FireCallbackAsync(OutreachRecord record)
     {

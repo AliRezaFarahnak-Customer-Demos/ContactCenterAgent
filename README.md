@@ -181,10 +181,13 @@ azd deploy admin-chat      # dashboard only
 
 ### Danish numbers end-to-end (`azd up` buys them)
 
-`azd up` provisions the phone numbers for you — set the country first:
+`azd up` provisions the phone numbers for you — set the country **and data residency** first
+(DK numbers can only be bought on an ACS resource whose data location is **Europe**, and data
+location is immutable after creation — so set both before the FIRST `azd up`):
 
 ```powershell
 azd env set PHONE_COUNTRY DK
+azd env set ACS_DATA_LOCATION Europe
 azd up
 ```
 
@@ -198,7 +201,7 @@ The one step that can't be scripted: Danish mobile numbers need **carrier/regula
 ## 9. Norlys production checklist
 
 - [ ] Deploy to a Norlys **EA / Pay-as-you-go** subscription (not a sandbox).
-- [ ] `azd env set PHONE_COUNTRY DK` → `azd up` buys the DK voice + **two-way SMS** numbers.
+- [ ] `azd env set PHONE_COUNTRY DK` + `azd env set ACS_DATA_LOCATION Europe` **before first `azd up`** → it buys the DK voice + **two-way SMS** numbers (data location is immutable).
 - [ ] Complete the DK mobile number's carrier registration (SMS delivery starts after approval).
 - [ ] Email: verify **`norlys.dk`** in ACS Email — **or** run `scripts/grant-graph-mail-permissions.ps1` and set `GRAPH_SENDER_ADDRESS` for two-way Graph email (§4).
 - [ ] Inbound: confirm the Event Grid subscriptions exist (`scripts/setup-eventgrid.ps1`).
@@ -217,14 +220,15 @@ The one step that can't be scripted: Danish mobile numbers need **carrier/regula
 | **MCP server** for other AI agents                     | `/mcp` (anonymous, Streamable HTTP) — `start_outreach`, `wait_for_outreach_result`, `get_outreach_result`, `send_followup`, `list_outreach`, `list_customers`, `get_customer_timeline`, `list_channels`, `list_personas` |
 | Input: customer, channel, message/intent **+ context** | `OutreachRequest` (REST) and the `context` parameter on `start_outreach` (MCP)                                                                                                            |
 | **Structured output** back to the calling agent        | `OutreachResult` — reply, collected, metrics, summary, outcome, topics, full interaction timeline                                                                                         |
-| **Async / callback** for slow channels                 | `callbackUrl` (pushed on completion) + `awaiting_reply` status for polling                                                                                                                |
+| **Async / callback** for slow channels                 | `callbackUrl` (pushed on completion), `awaiting_reply` status for polling, and `wait_for_outreach_result` (MCP) to block until done                                                       |
 | **Voice** (HD voices, personas)                        | ACS Call Automation + Voice Live; personas in `personas.json`                                                                                                                             |
 | **SMS** outbound + inbound replies                     | ACS SMS; inbound via Event Grid → `/api/events/sms`                                                                                                                                       |
 | **Email** outbound + inbound replies                   | ACS Email (inbound via Event Grid → `/api/events/email`, needs a custom domain) **or** Microsoft Graph from a real mailbox — `sendMail` out, `GraphInboxPoller` in, so two-way needs no ACS domain |
 | Message body from **intent + system prompt**           | With no literal `message`, Azure OpenAI drafts the SMS/email body from the intent, the persona system prompt (`personas.json`) and the supplied `context`                                  |
 | Metrics: **sentiment (satisfaction, problem-solved)**  | `OutreachResult.Metrics` — `satisfaction`, `problem_solved`, `overall_sentiment`, `customer_mood`, `frustration`, `churn_risk`, `trust_in_agent`, `call_effectiveness` (0–6, 3 = neutral) |
 | Extensible LLM structured output                       | `Metrics` / `Collected` are open key-value maps; `ConversationAnalysisService` owns the schema                                                                                            |
-| **Portable / config-driven**                           | All channel wiring is config (see §7); no code change to move to Norlys's Azure                                                                                                           |
+| **Portable / config-driven**                           | All channel wiring is config (see §7); globally-unique resource names are auto-suffixed per subscription, so `azd up` works on any Azure subscription unchanged                             |
+| MCP registry on **API Management**                     | The MCP endpoint is plain Streamable HTTP at `/mcp` — register it in APIM's MCP registry / front it with APIM for auth, throttling and discovery; no code change needed                    |
 
 ---
 

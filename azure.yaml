@@ -65,7 +65,10 @@ hooks:
       # drifts independently of azd. Pin it to the one azd just deployed into.
       if ($env:AZURE_SUBSCRIPTION_ID) { az account set -s $env:AZURE_SUBSCRIPTION_ID }
 
-      $rg = "rg-contactcenteragent"; $acs = "acs-contactcenteragent"; $ca = "ca-caller-agent"
+      $rg = "rg-contactcenteragent"; $ca = "ca-caller-agent"
+      # ACS names are GLOBALLY unique and therefore suffixed per subscription — resolve the
+      # real one from the bicep output azd exposes to hooks, not from a hardcoded literal.
+      $acs = if ($env:ACS_RESOURCE_NAME) { $env:ACS_RESOURCE_NAME } else { "acs-contactcenteragent" }
       $country = if ($env:PHONE_COUNTRY) { $env:PHONE_COUNTRY.ToUpper() } else { "US" }
       Write-Host "[postprovision] Provisioning ACS number(s) for country: $country"
 

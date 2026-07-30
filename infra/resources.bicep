@@ -48,7 +48,7 @@ param customDomainWww string = ''
 // 1. AI Foundry Resource (Cognitive Services Account)
 // ---------------------------------------------------------------------------
 resource aiFoundry 'Microsoft.CognitiveServices/accounts@2026-03-01' = {
-  name: 'cog-${resourcePrefix}'
+  name: 'cog-${resourcePrefix}${nameSuffix}'
   location: location
   tags: tags
   identity: {
@@ -465,7 +465,7 @@ resource adminChatLogAnalyticsRole 'Microsoft.Authorization/roleAssignments@2022
 // 12. Azure Communication Services (ACS) — Phone calling infrastructure
 // ---------------------------------------------------------------------------
 resource acs 'Microsoft.Communication/communicationServices@2023-04-01' = {
-  name: 'acs-${resourcePrefix}'
+  name: 'acs-${resourcePrefix}${nameSuffix}'
   location: 'global'
   tags: tags
   properties: {
@@ -674,7 +674,7 @@ resource callerAgentCognitiveServicesUserRole 'Microsoft.Authorization/roleAssig
 // 17. Azure Communication Services Email — outbound email (Azure-managed domain)
 // ---------------------------------------------------------------------------
 resource emailService 'Microsoft.Communication/emailServices@2023-04-01' = {
-  name: 'acs-email-${resourcePrefix}'
+  name: 'acs-email-${resourcePrefix}${nameSuffix}'
   location: 'global'
   tags: tags
   properties: {
