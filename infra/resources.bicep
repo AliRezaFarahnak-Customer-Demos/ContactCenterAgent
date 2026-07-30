@@ -793,6 +793,10 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-11-15' = {
       }
     ]
     disableLocalAuth: true
+    // Container Apps reach Cosmos over public egress; without this the account can be
+    // created with public access off and the store silently degrades to in-memory.
+    publicNetworkAccess: 'Enabled'
+    networkAclBypass: 'AzureServices'
   }
 }
 

@@ -212,6 +212,13 @@ azd deploy admin-chat      # dashboard only
 > rolls a revision running the placeholder instead of your code. `azd up` does both, so this
 > only bites when provisioning on its own (e.g. after changing an env var).
 
+> **Session durability.** Outreach sessions persist to Cosmos; if Cosmos is unreachable the store
+> logs a warning and degrades to in-memory, so sessions are lost on restart/redeploy (it re-attaches
+> automatically once Cosmos is reachable again). The Bicep asks for `publicNetworkAccess: 'Enabled'`,
+> but some tenants enforce it off at a scope above the subscription — on the demo tenant this could
+> not be overridden by Bicep, `az cosmosdb update` **or** a direct ARM PATCH. If sessions vanish
+> after a deploy, check `publicNetworkAccess` on the Cosmos account first.
+
 If `azd up` fails on model quota, the defaults are already quota-friendly — raise them when quota allows:
 
 ```powershell

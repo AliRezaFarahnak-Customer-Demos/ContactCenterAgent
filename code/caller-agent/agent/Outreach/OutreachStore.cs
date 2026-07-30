@@ -12,7 +12,10 @@ namespace CallerAgent.Outreach;
 /// </summary>
 public sealed class OutreachStore
 {
-    private readonly Container? _container;
+    private Container? _container;
+    // Kept even while Cosmos is unreachable so the store can recover without a restart.
+    private readonly Container? _configured;
+    private DateTimeOffset _nextProbeUtc = DateTimeOffset.MinValue;
     private readonly ILogger<OutreachStore> _logger;
     private readonly ConcurrentDictionary<string, OutreachRecord> _memory = new();
 
@@ -39,6 +42,7 @@ public sealed class OutreachStore
             ConnectionMode = ConnectionMode.Direct
         });
         _container = client.GetContainer(databaseName, containerName);
+        _configured = _container;
 
         // A tenant Azure Policy may disable public network access on Cosmos, which 403s every
         // request from the Container App's public egress. Probe once at startup; if Cosmos is
@@ -53,12 +57,44 @@ public sealed class OutreachStore
         {
             _logger.LogWarning(ex, "Cosmos unreachable — falling back to in-memory OutreachStore (data not durable).");
             _container = null;
+            _nextProbeUtc = DateTimeOffset.UtcNow.AddMinutes(1);
+        }
+    }
+
+    /// <summary>
+    /// Re-attach to Cosmos once it becomes reachable again (e.g. public network access was turned
+    /// back on), so durability is restored without waiting for a container restart.
+    /// </summary>
+    private void TryRecoverCosmos()
+    {
+        if (_container is not null || _configured is null || DateTimeOffset.UtcNow < _nextProbeUtc) return;
+        _nextProbeUtc = DateTimeOffset.UtcNow.AddMinutes(1);
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            _configured.ReadContainerAsync(cancellationToken: cts.Token).GetAwaiter().GetResult();
+            _container = _configured;
+            _logger.LogInformation("Cosmos reachable again — OutreachStore is durable. Migrating {Count} in-memory records.", _memory.Count);
+            foreach (var record in _memory.Values.ToList())
+            {
+                try
+                {
+                    _container.UpsertItemAsync(record, new PartitionKey(record.CustomerId)).GetAwaiter().GetResult();
+                    _memory.TryRemove(record.Id, out _);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "Could not migrate outreach {Id} to Cosmos", record.Id); }
+            }
+        }
+        catch
+        {
+            // Still unreachable — stay on the in-memory store and try again after the interval.
         }
     }
 
     public async Task UpsertAsync(OutreachRecord record)
     {
         record.UpdatedUtc = DateTimeOffset.UtcNow;
+        TryRecoverCosmos();
         if (_container is null)
         {
             _memory[record.Id] = record;
