@@ -99,6 +99,9 @@ public class OutreachRecord
     [JsonProperty("context")] public Dictionary<string, string>? Context { get; set; }
     [JsonProperty("callbackUrl")] public string? CallbackUrl { get; set; }
     [JsonProperty("contextId")] public string? ContextId { get; set; }   // voice-call correlation id
+    [JsonProperty("persona")] public string? Persona { get; set; }
+    [JsonProperty("subject")] public string? Subject { get; set; }
+    [JsonProperty("aiReplies")] public int AiReplies { get; set; }       // guards the auto-reply loop
     [JsonProperty("interactions")] public List<Interaction> Interactions { get; set; } = new();
     [JsonProperty("createdUtc")] public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     [JsonProperty("updatedUtc")] public DateTimeOffset UpdatedUtc { get; set; } = DateTimeOffset.UtcNow;

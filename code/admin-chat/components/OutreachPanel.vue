@@ -17,6 +17,7 @@ const {
   startOutreach,
   simulateReply,
   sendFollowUp,
+  clearAll,
 } = useOutreach();
 
 const channel = ref<"voice" | "sms" | "email">("sms");
@@ -152,6 +153,27 @@ function copyMcp() {
   setTimeout(() => (mcpCopied.value = false), 1500);
 }
 
+const clearing = ref(false);
+const confirmClear = ref(false);
+
+async function doClearAll() {
+  if (!confirmClear.value) {
+    confirmClear.value = true;
+    setTimeout(() => (confirmClear.value = false), 4000);
+    return;
+  }
+  clearing.value = true;
+  try {
+    await clearAll();
+    expanded.value = null;
+    lastSent.value = null;
+    confirmClear.value = false;
+    await loadCustomers();
+  } finally {
+    clearing.value = false;
+  }
+}
+
 function fmtTime(iso: string) {
   try {
     return new Date(iso).toLocaleString("da-DK", {
@@ -202,13 +224,31 @@ onBeforeUnmount(() => timer && clearInterval(timer));
           >{{ customers.length }}</span
         >
       </div>
-      <button
-        type="button"
-        class="text-[11px] text-norlys-petroleum hover:text-norlys-red transition-colors"
-        @click="refresh()"
-      >
-        Opdater
-      </button>
+      <div class="flex items-center gap-3">
+        <button
+          v-if="customers.length"
+          type="button"
+          class="text-[11px] transition-colors"
+          :class="
+            confirmClear
+              ? 'text-norlys-red font-semibold'
+              : 'text-norlys-petroleum hover:text-norlys-red'
+          "
+          :disabled="clearing"
+          @click="doClearAll()"
+        >
+          {{
+            clearing ? "Rydder…" : confirmClear ? "Bekræft: slet alle" : "Slet alle"
+          }}
+        </button>
+        <button
+          type="button"
+          class="text-[11px] text-norlys-petroleum hover:text-norlys-red transition-colors"
+          @click="refresh()"
+        >
+          Opdater
+        </button>
+      </div>
     </div>
 
     <div class="flex-1 overflow-y-auto">

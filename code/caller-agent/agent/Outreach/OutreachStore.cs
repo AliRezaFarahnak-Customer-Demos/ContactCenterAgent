@@ -110,6 +110,29 @@ public sealed class OutreachStore
         return await QuerySingleAsync(q);
     }
 
+    /// <summary>
+    /// Find the thread an inbound message belongs to: one still awaiting a reply if there is one,
+    /// otherwise the most recent thread for that address — customers often write again after a case
+    /// was closed, and that should continue the conversation rather than start an orphan.
+    /// </summary>
+    public async Task<OutreachRecord?> FindLatestForAddressAsync(string address)
+    {
+        if (_container is null)
+        {
+            return _memory.Values
+                .Where(r => r.Phone == address || r.Email == address)
+                .OrderByDescending(r => r.Status == "awaiting_reply")
+                .ThenByDescending(r => r.CreatedUtc)
+                .FirstOrDefault();
+        }
+
+        var q = new QueryDefinition(
+            "SELECT * FROM c WHERE (c.phone = @a OR c.email = @a) ORDER BY c.createdUtc DESC")
+            .WithParameter("@a", address);
+        var recent = await QueryListAsync(q, new QueryRequestOptions { MaxItemCount = 10 }, 10);
+        return recent.FirstOrDefault(r => r.Status == "awaiting_reply") ?? recent.FirstOrDefault();
+    }
+
     public async Task<IReadOnlyList<OutreachRecord>> ListByCustomerAsync(string customerId)
     {
         if (_container is null)
@@ -130,6 +153,29 @@ public sealed class OutreachStore
 
         var q = new QueryDefinition("SELECT * FROM c ORDER BY c.createdUtc DESC");
         return await QueryListAsync(q, new QueryRequestOptions { MaxItemCount = limit }, limit);
+    }
+
+    /// <summary>Wipe every outreach record. Demo/reset aid — disable with Outreach:AllowDataReset=false.</summary>
+    public async Task<int> DeleteAllAsync()
+    {
+        var memoryCount = _memory.Count;
+        _memory.Clear();
+        if (_container is null) return memoryCount;
+
+        var deleted = 0;
+        foreach (var record in await ListRecentAsync(1000))
+        {
+            try
+            {
+                await _container.DeleteItemAsync<OutreachRecord>(record.Id, new PartitionKey(record.CustomerId));
+                deleted++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not delete outreach {Id}", record.Id);
+            }
+        }
+        return deleted + memoryCount;
     }
 
     private async Task<OutreachRecord?> QuerySingleAsync(QueryDefinition q)

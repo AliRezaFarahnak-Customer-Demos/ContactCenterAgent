@@ -47,6 +47,8 @@ public sealed class OutreachService
     // The identity needs the Graph application permission Mail.Send.
     private readonly string? _graphSender;
     private readonly bool _preferAcsDelivery;
+    private readonly bool _autoReply;
+    private const int MaxAiReplies = 12;
     private readonly TokenCredential _credential = new DefaultAzureCredential();
     // Drafts the SMS/email body from intent + persona system prompt + context when the caller
     // supplies no literal message. Same Azure OpenAI resource the voice + analysis paths use.
@@ -84,6 +86,8 @@ public sealed class OutreachService
         // reports a real delivery status, so it can be preferred for sending while the Graph
         // mailbox stays the Reply-To that GraphInboxPoller watches — delivery + two-way.
         _preferAcsDelivery = config.GetValue<bool?>("Email:PreferAcsDelivery") ?? false;
+        // Demo default ON: the agent answers written replies itself and can act on them.
+        _autoReply = config.GetValue<bool?>("Outreach:AutoReply") ?? true;
 
         var aoaiEndpoint = config["AzureOpenAI:Endpoint"];
         if (!string.IsNullOrWhiteSpace(aoaiEndpoint))
@@ -223,6 +227,8 @@ public sealed class OutreachService
             Message = req.Message,
             Context = req.Context,
             CallbackUrl = req.CallbackUrl,
+            Persona = req.Persona,
+            Subject = req.Context is not null && req.Context.TryGetValue("subject", out var subj) ? subj : null,
             Status = "pending"
         };
 
@@ -418,7 +424,7 @@ public sealed class OutreachService
     /// </summary>
     public async Task<bool> TryHandleInboundEmailAsync(string from, string subject, string body)
     {
-        var record = await _store.FindLatestAwaitingReplyAsync(NormalizeAddress(from)!);
+        var record = await _store.FindLatestForAddressAsync(NormalizeAddress(from)!);
         if (record is null) return false;
         await AppendInboundAsync(record, "email", string.IsNullOrWhiteSpace(subject) ? body : $"{subject}\n\n{body}");
         return true;
@@ -427,7 +433,7 @@ public sealed class OutreachService
     private async Task HandleInboundAsync(string channel, string from, string text)
     {
         from = NormalizeAddress(from)!;
-        var record = await _store.FindLatestAwaitingReplyAsync(from)
+        var record = await _store.FindLatestForAddressAsync(from)
             // Unmatched inbound — still capture it so nothing is lost in the timeline.
             ?? new OutreachRecord
             {
@@ -446,13 +452,47 @@ public sealed class OutreachService
         record.Interactions.Add(new Interaction { Channel = channel, Direction = "inbound", Text = text });
         record.Reply = text;
         record.Status = "completed";
+        // A new message reopens the case, so a previous close_case must not short-circuit this round.
+        record.Outcome = null;
+
+        // Agentic continuation: answer in the same thread, and act (place a call, close the case).
+        // Skipped when we'd be replying to our own mailbox, which would loop forever.
+        var selfSend = _graphSender is not null &&
+                       string.Equals(record.Email, _graphSender, StringComparison.OrdinalIgnoreCase);
+        if (_autoReply && channel is "sms" or "email" && !selfSend && record.AiReplies < MaxAiReplies)
+        {
+            var reply = await RunThreadAgentAsync(record, channel);
+            if (!string.IsNullOrWhiteSpace(reply))
+            {
+                var subject = string.IsNullOrWhiteSpace(record.Subject) ? "Norlys" : record.Subject!;
+                if (!subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase)) subject = $"Re: {subject}";
+                try
+                {
+                    await DeliverAsync(channel, record.Phone, record.Email, reply!, subject);
+                    record.AiReplies++;
+                    record.Interactions.Add(new Interaction
+                    {
+                        Channel = channel,
+                        Direction = "outbound",
+                        Text = channel == "email" ? $"{subject}\n\n{reply}" : reply!
+                    });
+                    // Keep the thread open unless the agent closed the case itself.
+                    record.Status = record.Outcome == "resolved" ? "completed" : "awaiting_reply";
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Auto-reply delivery failed for outreach {Id}", record.Id);
+                }
+            }
+        }
+
         await _store.UpsertAsync(record);
 
         _telemetry?.TrackEvent("OutreachInboundReply", new Dictionary<string, string>
         {
-            { "outreach.channel", channel }, { "outreach.id", record.Id }
+            { "outreach.channel", channel }, { "outreach.id", record.Id }, { "outreach.status", record.Status }
         });
-        await FireCallbackAsync(record);
+        if (record.Status == "completed") await FireCallbackAsync(record);
     }
 
     // -----------------------------------------------------------------------
@@ -527,6 +567,8 @@ public sealed class OutreachService
 
     public IReadOnlyList<PersonaSummary> ListPersonas() =>
         s_personas.Value.Select(p => new PersonaSummary(p.Id, p.Label, p.Description, p.LanguageCode)).ToList();
+
+    public Task<int> ClearAllAsync() => _store.DeleteAllAsync();
 
     /// <summary>
     /// Block until the outreach reaches a terminal status or the timeout elapses, so an agent
@@ -636,6 +678,205 @@ public sealed class OutreachService
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Continue a written thread agentically: the record's interaction history IS the conversation
+    /// session, replayed as chat turns, and the model gets tools so it can act — place a real voice
+    /// call when the customer asks to be phoned, or close the case. Returns the reply to send.
+    /// </summary>
+    private async Task<string?> RunThreadAgentAsync(OutreachRecord record, string channel)
+    {
+        if (_draftClient is null) return null;
+
+        var personaPrompt = s_personas.Value.FirstOrDefault(p => p.Id == record.Persona)?.Prompt;
+        var channelRules = channel == "sms"
+            ? "Svar som SMS: maks. 2 korte sætninger, under 320 tegn."
+            : "Svar som en kort e-mail: 2-5 sætninger i almindelig tekst, ingen emnelinje.";
+
+        var system = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(personaPrompt))
+            system.AppendLine(personaPrompt).AppendLine();
+        system.AppendLine("Du er Norlys' kundeserviceassistent og fører en skriftlig samtale med kunden på dansk.");
+        system.AppendLine(channelRules);
+        system.AppendLine("Ingen emojis, ingen markdown. Stil kun ét spørgsmål ad gangen.");
+        system.AppendLine($"Sagens formål: {record.Intent ?? "generel kontakt"}.");
+        if (!string.IsNullOrWhiteSpace(record.CustomerName)) system.AppendLine($"Kundens navn: {record.CustomerName}");
+        if (!string.IsNullOrWhiteSpace(record.Phone)) system.AppendLine($"Kendt telefonnummer: {record.Phone}");
+        if (record.Context is { Count: > 0 })
+            foreach (var kv in record.Context) system.AppendLine($"{kv.Key}: {kv.Value}");
+        system.AppendLine();
+        system.AppendLine("VÆRKTØJER:");
+        system.AppendLine("- Beder kunden om at blive ringet op, så brug place_phone_call. Har du ikke et nummer, så spørg om det først og ring i næste tur.");
+        system.AppendLine("- Beder kunden om en SMS, så brug send_sms.");
+        system.AppendLine("- Er sagen afsluttet, eller vil kunden ikke fortsætte, så brug close_case.");
+        system.AppendLine("Du må gerne bruge flere værktøjer i samme tur.");
+        system.AppendLine("Efter et værktøjskald skal du ALTID skrive en kort besked til kunden om hvad der nu sker. Lykkedes et værktøj ikke, så sig det ærligt.");
+
+        var messages = new List<ChatMessage> { new SystemChatMessage(system.ToString()) };
+        foreach (var i in record.Interactions.Where(x => x.Channel != "voice"))
+        {
+            if (i.Direction == "outbound") messages.Add(new AssistantChatMessage(i.Text));
+            else messages.Add(new UserChatMessage(i.Text));
+        }
+
+        var options = new ChatCompletionOptions();
+        options.Tools.Add(ChatTool.CreateFunctionTool("place_phone_call",
+            "Ring til kunden med Norlys' AI-telefonagent. Brug kun når kunden har bedt om at blive ringet op OG du har et telefonnummer.",
+            BinaryData.FromString("""
+            {"type":"object","properties":{
+              "phoneNumber":{"type":"string","description":"Kundens nummer i E.164, fx +4521858353"},
+              "reason":{"type":"string","description":"Kort begrundelse for opkaldet"}},
+             "required":["phoneNumber","reason"]}
+            """)));
+        options.Tools.Add(ChatTool.CreateFunctionTool("send_sms",
+            "Send en SMS til kunden. Brug når kunden beder om en SMS-bekræftelse eller -påmindelse.",
+            BinaryData.FromString("""
+            {"type":"object","properties":{
+              "phoneNumber":{"type":"string","description":"Kundens nummer i E.164"},
+              "message":{"type":"string","description":"SMS-teksten, maks 320 tegn"}},
+             "required":["phoneNumber","message"]}
+            """)));
+        options.Tools.Add(ChatTool.CreateFunctionTool("close_case",
+            "Afslut sagen når formålet er opfyldt, eller kunden ikke vil fortsætte.",
+            BinaryData.FromString("""
+            {"type":"object","properties":{
+              "summary":{"type":"string","description":"Kort resumé af udfaldet"},
+              "collected":{"type":"object","description":"Felter kunden har oplyst","additionalProperties":{"type":"string"}}},
+             "required":["summary"]}
+            """)));
+
+        try
+        {
+            // Two passes is enough: act, then speak about what happened.
+            for (var turn = 0; turn < 2; turn++)
+            {
+                var completion = await _draftClient.CompleteChatAsync(messages, options);
+                var value = completion.Value;
+
+                if (value.ToolCalls.Count == 0)
+                {
+                    var text = value.Content.Count > 0 ? value.Content[0].Text?.Trim() : null;
+                    return string.IsNullOrWhiteSpace(text) ? null : text;
+                }
+
+                messages.Add(new AssistantChatMessage(value));
+                foreach (var call in value.ToolCalls)
+                {
+                    var result = await ExecuteThreadToolAsync(record, call.FunctionName, call.FunctionArguments);
+                    messages.Add(new ToolChatMessage(call.Id, result));
+                }
+            }
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Thread agent failed for outreach {Id}", record.Id);
+            return null;
+        }
+    }
+
+    private async Task<string> ExecuteThreadToolAsync(OutreachRecord record, string name, BinaryData args)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(args.ToString());
+            switch (name)
+            {
+                case "place_phone_call":
+                {
+                    var phone = doc.RootElement.TryGetProperty("phoneNumber", out var p) ? p.GetString() : null;
+                    var reason = doc.RootElement.TryGetProperty("reason", out var r) ? r.GetString() : "opfølgning";
+                    phone = NormalizeAddress(phone) ?? record.Phone;
+                    if (string.IsNullOrWhiteSpace(phone)) return "Intet telefonnummer — spørg kunden om nummeret.";
+                    if (!phone.StartsWith('+')) phone = "+" + phone.TrimStart('+');
+                    if (VoicePlacer is null) return "Telefonkanalen er ikke tilgængelig.";
+
+                    record.Phone = phone;
+                    // VoicePlacer reads the system prompt off the record, so hand the voice agent
+                    // the written thread — same customer session, different channel.
+                    record.Message = BuildVoicePromptFromThread(record, reason!);
+                    record.ContextId = await VoicePlacer(record);
+                    record.Interactions.Add(new Interaction
+                    {
+                        Channel = "voice",
+                        Direction = "outbound",
+                        Text = $"Udgående opkald til {phone} påbegyndt ({reason})."
+                    });
+                    _logger.LogInformation("Thread agent placed a call to {Phone} for outreach {Id}", phone, record.Id);
+                    return $"Opkald til {phone} er startet.";
+                }
+
+                case "send_sms":
+                {
+                    var smsTo = doc.RootElement.TryGetProperty("phoneNumber", out var sp) ? sp.GetString() : null;
+                    var smsText = doc.RootElement.TryGetProperty("message", out var sm) ? sm.GetString() : null;
+                    smsTo = NormalizeAddress(smsTo) ?? record.Phone;
+                    if (string.IsNullOrWhiteSpace(smsTo)) return "Intet telefonnummer — spørg kunden om nummeret.";
+                    if (!smsTo.StartsWith('+')) smsTo = "+" + smsTo.TrimStart('+');
+                    if (string.IsNullOrWhiteSpace(smsText)) return "Ingen SMS-tekst angivet.";
+
+                    try
+                    {
+                        await DeliverAsync("sms", smsTo, null, smsText!, "");
+                        record.Phone ??= smsTo;
+                        record.Interactions.Add(new Interaction { Channel = "sms", Direction = "outbound", Text = smsText! });
+                        _logger.LogInformation("Thread agent sent an SMS to {Phone} for outreach {Id}", smsTo, record.Id);
+                        return $"SMS sendt til {smsTo}.";
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Thread agent SMS to {Phone} failed", smsTo);
+                        return $"SMS kunne ikke sendes: {ex.Message}";
+                    }
+                }
+
+                case "close_case":
+                {
+                    if (doc.RootElement.TryGetProperty("summary", out var s))
+                        record.Summary = s.GetString();
+                    if (doc.RootElement.TryGetProperty("collected", out var c) && c.ValueKind == JsonValueKind.Object)
+                    {
+                        record.Collected ??= new Dictionary<string, string>();
+                        foreach (var p in c.EnumerateObject())
+                        {
+                            var v = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : p.Value.ToString();
+                            if (!string.IsNullOrWhiteSpace(v)) record.Collected[p.Name] = v!;
+                        }
+                    }
+                    record.Outcome = "resolved";
+                    return "Sagen er markeret som afsluttet.";
+                }
+
+                default:
+                    return $"Ukendt værktøj '{name}'.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Thread tool {Tool} failed for outreach {Id}", name, record.Id);
+            return "Værktøjet fejlede.";
+        }
+    }
+
+    private static string BuildVoicePromptFromThread(OutreachRecord record, string reason)
+    {
+        var persona = s_personas.Value.FirstOrDefault(p => p.Id == record.Persona)?.Prompt;
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(persona)) sb.AppendLine(persona).AppendLine();
+        sb.AppendLine($"Du ringer til {record.CustomerName ?? "kunden"} som opfølgning på en skriftlig samtale.");
+        sb.AppendLine($"Kunden bad selv om at blive ringet op. Begrundelse: {reason}");
+        sb.AppendLine($"Sagens formål: {record.Intent ?? "generel kontakt"}");
+        if (record.Context is { Count: > 0 })
+            foreach (var kv in record.Context) sb.AppendLine($"{kv.Key}: {kv.Value}");
+        sb.AppendLine();
+        sb.AppendLine("Tidligere skriftlig samtale:");
+        foreach (var i in record.Interactions.Where(x => x.Channel != "voice"))
+            sb.AppendLine($"- {(i.Direction == "outbound" ? "Norlys" : "Kunden")}: {i.Text}");
+        sb.AppendLine();
+        sb.AppendLine("Sig kort hvorfor du ringer, og hjælp kunden med at afslutte sagen.");
+        return sb.ToString();
+    }
+
 
     /// <summary>Lowercase emails, trim everything — reply matching must not depend on sender casing.</summary>
     private static string? NormalizeAddress(string? address)

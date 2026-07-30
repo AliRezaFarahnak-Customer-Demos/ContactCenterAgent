@@ -155,6 +155,17 @@ export function useOutreach() {
     }
   }
 
+  // Demo reset: wipe every customer session.
+  async function clearAll(): Promise<boolean> {
+    try {
+      await $fetch("/api/outreach", { method: "DELETE" });
+      customers.value = [];
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return {
     channels,
     customers,
@@ -167,5 +178,6 @@ export function useOutreach() {
     getResult,
     simulateReply,
     sendFollowUp,
+    clearAll,
   };
 }

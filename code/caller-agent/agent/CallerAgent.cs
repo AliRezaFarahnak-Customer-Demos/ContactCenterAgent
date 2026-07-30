@@ -891,6 +891,16 @@ app.MapPost("/api/outreach/{id}/followup", async (string id, [FromBody] FollowUp
 
 app.MapGet("/api/personas", (OutreachService outreach) => Results.Ok(outreach.ListPersonas()));
 
+// Demo reset: wipe every outreach/customer session. Disable with Outreach:AllowDataReset=false.
+app.MapDelete("/api/outreach", async (OutreachService outreach, ILogger<Program> logger) =>
+{
+    if (app.Configuration.GetValue<bool?>("Outreach:AllowDataReset") == false)
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var deleted = await outreach.ClearAllAsync();
+    logger.LogInformation("Outreach data reset: {Count} records deleted", deleted);
+    return Results.Ok(new { deleted });
+});
+
 // Demo/testing aid: inject a customer "reply" into a thread using the SAME inbound code path as a real
 // Event Grid reply. Lets the dashboard show a two-way thread when a live carrier inbound isn't available
 // (e.g. trial test sender). Disable in production with Outreach:AllowSimulatedReplies=false.
