@@ -24,6 +24,9 @@ param acsSmsNumber string = ''
 @description('Mailbox for Microsoft Graph sendMail + inbound reply polling (e.g. "noreply@norlys.dk"). Empty = use ACS Email instead. The caller-agent managed identity needs Graph Mail.Send + Mail.ReadWrite: scripts/grant-graph-mail-permissions.ps1')
 param graphSenderAddress string = ''
 
+@description('Send via ACS Email (real delivery status, works when a tenant is blocked from external mail) with the Graph mailbox as Reply-To so replies are still captured.')
+param preferAcsEmailDelivery bool = false
+
 @description('Optional apex custom domain (e.g. "example.com"). Leave empty on first deploy.')
 param customDomain string = ''
 
@@ -106,6 +109,7 @@ module resources 'resources.bicep' = {
     messagingConnectApiKey: messagingConnectApiKey
     messagingConnectSender: messagingConnectSender
     graphSenderAddress: graphSenderAddress
+    preferAcsEmailDelivery: preferAcsEmailDelivery
     customDomain: customDomain
     customDomainWww: customDomainWww
   }

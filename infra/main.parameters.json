@@ -23,6 +23,9 @@
     "graphSenderAddress": {
       "value": "${GRAPH_SENDER_ADDRESS=}"
     },
+    "preferAcsEmailDelivery": {
+      "value": "${PREFER_ACS_EMAIL_DELIVERY=false}"
+    },
     "acsDataLocation": {
       "value": "${ACS_DATA_LOCATION=United States}"
     },

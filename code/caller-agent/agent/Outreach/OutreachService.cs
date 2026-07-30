@@ -46,6 +46,7 @@ public sealed class OutreachService
     // it uses the container app's managed identity in Azure (no secret) and az login locally.
     // The identity needs the Graph application permission Mail.Send.
     private readonly string? _graphSender;
+    private readonly bool _preferAcsDelivery;
     private readonly TokenCredential _credential = new DefaultAzureCredential();
     // Drafts the SMS/email body from intent + persona system prompt + context when the caller
     // supplies no literal message. Same Azure OpenAI resource the voice + analysis paths use.
@@ -78,6 +79,11 @@ public sealed class OutreachService
 
         var graphSender = config["Graph:SenderAddress"];
         _graphSender = string.IsNullOrWhiteSpace(graphSender) ? null : graphSender!.Trim();
+        // Graph sendMail is fire-and-forget: it returns 202 even when the tenant can't deliver
+        // externally (trial/sandbox tenants are blocked from outbound internet mail). ACS Email
+        // reports a real delivery status, so it can be preferred for sending while the Graph
+        // mailbox stays the Reply-To that GraphInboxPoller watches — delivery + two-way.
+        _preferAcsDelivery = config.GetValue<bool?>("Email:PreferAcsDelivery") ?? false;
 
         var aoaiEndpoint = config["AzureOpenAI:Endpoint"];
         if (!string.IsNullOrWhiteSpace(aoaiEndpoint))
@@ -330,14 +336,25 @@ public sealed class OutreachService
             case "email":
                 if (!EmailEnabled || string.IsNullOrWhiteSpace(email))
                     throw new InvalidOperationException("Email channel not available or no email address provided.");
-                // Graph sends from a real mailbox and gets real replies — prefer it when configured.
-                if (GraphEmailEnabled)
-                    await SendViaGraphAsync(email!, subject, text);
-                else
-                    await _emailClient!.SendAsync(WaitUntil.Started, new EmailMessage(
+
+                var useAcs = _emailClient is not null && !string.IsNullOrWhiteSpace(_emailSender)
+                             && (_preferAcsDelivery || !GraphEmailEnabled);
+                if (useAcs)
+                {
+                    var message = new EmailMessage(
                         senderAddress: _emailSender,
                         content: new EmailContent(subject) { PlainText = text },
-                        recipients: new EmailRecipients(new[] { new EmailAddress(email) })));
+                        recipients: new EmailRecipients(new[] { new EmailAddress(email) }));
+                    // Replies land in the monitored mailbox, so the poller can still thread them.
+                    if (_graphSender is not null) message.ReplyTo.Add(new EmailAddress(_graphSender));
+                    await _emailClient!.SendAsync(WaitUntil.Started, message);
+                    _logger.LogInformation("ACS Email accepted: to={To} from={From} replyTo={ReplyTo}",
+                        email, _emailSender, _graphSender ?? "(none)");
+                }
+                else
+                {
+                    await SendViaGraphAsync(email!, subject, text);
+                }
                 return true;
 
             default:
@@ -536,9 +553,11 @@ public sealed class OutreachService
                 ? $"SMS via Azure Communication Services Messaging Connect (partner: {_mcPartner}), afsender '{_mcFrom}'. Global rækkevidde inkl. +45; branded alfanumerisk afsender er en-vejs."
                 : SmsEnabled ? $"To-vejs SMS til US/Canada via {_smsNumber}. Levering til andre lande (fx +45) kræver Messaging Connect." : "Not configured."),
         new ChannelCapability("email", EmailEnabled, EmailEnabled, GraphEmailEnabled, GraphEmailEnabled ? _graphSender : _emailSender,
-            GraphEmailEnabled
-                ? $"E-mail via Microsoft Graph fra postkassen '{_graphSender}'. Udgående globalt; kundesvar lander i postkassen, så to-vejs virker uden ACS-domlæne."
-                : EmailEnabled ? "Outbound global. Inbound reply capture requires a custom domain." : "Not configured.")
+            _preferAcsDelivery && _emailClient is not null
+                ? $"Afsendes via ACS Email ({_emailSender}) for p\u00e5lidelig ekstern levering; svar g\u00e5r til '{_graphSender}' og opsamles automatisk."
+                : GraphEmailEnabled
+                    ? $"E-mail via Microsoft Graph fra postkassen '{_graphSender}'. Udg\u00e5ende globalt; kundesvar lander i postkassen, s\u00e5 to-vejs virker uden ACS-dom\u00e6ne."
+                    : EmailEnabled ? "Outbound global. Inbound reply capture requires a custom domain." : "Not configured.")
     };
 
     // -----------------------------------------------------------------------

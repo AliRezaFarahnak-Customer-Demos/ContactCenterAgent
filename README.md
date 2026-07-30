@@ -115,6 +115,30 @@ Leave `GRAPH_SENDER_ADDRESS` empty to stay on ACS Email. Poll interval defaults 
 > Scope them to the single outreach mailbox with an Exchange
 > [application access policy](https://learn.microsoft.com/graph/auth-limit-mailbox-access).
 
+### Option C — ACS delivery + mailbox replies (best of both)
+
+`PREFER_ACS_EMAIL_DELIVERY=true` sends through **ACS Email** while setting **Reply-To** to the
+Graph mailbox, so `GraphInboxPoller` still captures replies. Use this when the sending tenant
+can't deliver externally, or whenever a **real delivery status** matters.
+
+Why it exists (verified 2026-07-30): Graph `sendMail` is **fire-and-forget** — it returns `202`
+even when Exchange later drops the message, so a blocked tenant looks identical to a working one.
+Trial / sandbox / CAP tenants are commonly barred from outbound internet mail: on this demo tenant,
+Graph mail to `@gmail.com` and `@microsoft.com` was accepted and **never delivered**, while ACS
+Email to the same addresses reported `status: Succeeded` and arrived. ACS Email polls to a true
+delivery status; Graph cannot.
+
+```powershell
+azd env set PREFER_ACS_EMAIL_DELIVERY true
+azd provision; azd deploy caller-agent
+```
+
+Sender note: the Azure **managed** domain is documented as `DoNotReply`-only, but a custom
+local-part is accepted in practice — the Bicep provisions **`kundeservice@<managed-domain>`**
+(display name "Norlys Kundeservice"), which reads far better than "donotreply" to a customer.
+On a **verified custom domain** (`norlys.dk`) none of this applies: Option B delivers externally
+on its own, and Option A gets Event Grid inbound.
+
 ---
 
 ## 5. AI
@@ -153,6 +177,7 @@ Nested keys use `:` in appsettings and `__` (double underscore) as environment v
 | `Email:SenderAddress`            | ACS Email from-address (e.g. `noreply@norlys.dk`).           |
 | `Graph:SenderAddress`            | Mailbox for Graph `sendMail`. Set = Graph (two-way email); empty = ACS Email. |
 | `Graph:PollSeconds`              | Inbox poll interval for email replies (default 30, min 10).  |
+| `Email:PreferAcsDelivery`        | Send via ACS Email (real delivery status) with the Graph mailbox as Reply-To. Use when the tenant can't send externally. |
 | `AzureOpenAI:Endpoint`           | Azure OpenAI endpoint. Also drafts SMS/email bodies from an intent. |
 | `Cosmos:Endpoint`                | Cosmos DB (conversation store); in-memory fallback if unset. |
 | `RESOURCE_NAME_SUFFIX`           | Suffix for globally-unique names. Empty = derived from the subscription id (lets any subscription deploy). `none` = original unsuffixed names. |

@@ -39,6 +39,9 @@ param acsSmsNumber string = ''
 @description('Mailbox for Graph sendMail + inbound reply polling. Empty = ACS Email.')
 param graphSenderAddress string = ''
 
+@description('Send email via ACS (reliable external delivery, real delivery status) while the Graph mailbox stays the Reply-To that captures replies.')
+param preferAcsEmailDelivery bool = false
+
 @secure()
 @description('Connection string of a separate SMS-capable ACS resource. Empty = SMS uses the main ACS resource.')
 param smsConnectionString string = ''
@@ -662,6 +665,10 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
               name: 'Graph__SenderAddress'
               value: graphSenderAddress
             }
+            {
+              name: 'Email__PreferAcsDelivery'
+              value: string(preferAcsEmailDelivery)
+            }
             // ─── Voice (TTS) ───────────────────────────────────────────────
             // Pin the TTS locale at the deployment layer so the production
             // container always sends `locale: "da-DK"` on the wire regardless
@@ -750,12 +757,15 @@ resource emailDomain 'Microsoft.Communication/emailServices/domains@2023-04-01' 
   }
 }
 
+// Azure Managed Domains are documented as DoNotReply-only, but a custom local-part is
+// accepted in practice (verified 2026-07-30) — "kundeservice" reads far better to a
+// customer than "donotreply", and replies are routed by Reply-To anyway.
 resource emailSender 'Microsoft.Communication/emailServices/domains/senderUsernames@2023-04-01' = {
   parent: emailDomain
-  name: 'donotreply'
+  name: 'kundeservice'
   properties: {
-    username: 'DoNotReply'
-    displayName: 'Norlys'
+    username: 'kundeservice'
+    displayName: 'Norlys Kundeservice'
   }
 }
 
