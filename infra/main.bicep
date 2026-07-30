@@ -43,8 +43,19 @@ param realtimeCapacity int = 10
 @description('Connection string of a SEPARATE SMS-capable ACS resource (eligible PAYG/EA sub). Empty = SMS uses the main ACS resource.')
 param smsConnectionString string = ''
 
+@secure()
+@description('Override the voice ACS connection string (e.g. EU resource holding a Danish number). Empty = main resource.')
+param acsConnectionStringOverride string = ''
+
 @description('Registered alphanumeric sender ID (e.g. "Norlys") for branded outbound-only SMS outside US/CA.')
 param acsSmsSenderId string = ''
+
+@secure()
+@description('Messaging Connect partner API key (Infobip, scope sms:message:send). Empty = Messaging Connect off.')
+param messagingConnectApiKey string = ''
+
+@description('Messaging Connect sender (number/sender provisioned at the partner AND synced to the ACS resource).')
+param messagingConnectSender string = ''
 
 // Fixed naming prefix — all resource names derive from this, NOT from the azd env name
 var resourcePrefix = 'contactcenteragent'
@@ -90,7 +101,10 @@ module resources 'resources.bicep' = {
     acsPhoneNumber: acsPhoneNumber
     acsSmsNumber: acsSmsNumber
     smsConnectionString: smsConnectionString
+    acsConnectionStringOverride: acsConnectionStringOverride
     acsSmsSenderId: acsSmsSenderId
+    messagingConnectApiKey: messagingConnectApiKey
+    messagingConnectSender: messagingConnectSender
     graphSenderAddress: graphSenderAddress
     customDomain: customDomain
     customDomainWww: customDomainWww

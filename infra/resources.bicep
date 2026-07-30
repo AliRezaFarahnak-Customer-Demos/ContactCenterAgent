@@ -43,8 +43,19 @@ param graphSenderAddress string = ''
 @description('Connection string of a separate SMS-capable ACS resource. Empty = SMS uses the main ACS resource.')
 param smsConnectionString string = ''
 
+@secure()
+@description('Override the voice/Call Automation ACS connection string, e.g. to dial from a number on an EU data-location resource when the main resource is US (data location is immutable). Empty = main resource.')
+param acsConnectionStringOverride string = ''
+
 @description('Registered alphanumeric sender ID for branded outbound-only SMS outside US/CA.')
 param acsSmsSenderId string = ''
+
+@secure()
+@description('Messaging Connect partner API key (Infobip). Empty = off.')
+param messagingConnectApiKey string = ''
+
+@description('Messaging Connect sender synced to the ACS resource.')
+param messagingConnectSender string = ''
 
 // ACS rejects numbers without the leading '+'. azd env round-tripping has been seen to
 // drop it, so normalize here rather than trusting the caller.
@@ -541,12 +552,18 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
         }
         {
           name: 'acs-connection-string'
-          value: acs.listKeys().primaryConnectionString
+          value: empty(acsConnectionStringOverride) ? acs.listKeys().primaryConnectionString : acsConnectionStringOverride
         }
         ...(empty(smsConnectionString) ? [] : [
           {
             name: 'sms-connection-string'
             value: smsConnectionString
+          }
+        ])
+        ...(empty(messagingConnectApiKey) ? [] : [
+          {
+            name: 'messaging-connect-api-key'
+            value: messagingConnectApiKey
           }
         ])
       ]
@@ -607,6 +624,16 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
                 secretRef: 'sms-connection-string'
               }
             ])
+            ...(empty(messagingConnectApiKey) ? [] : [
+              {
+                name: 'MessagingConnect__ApiKey'
+                secretRef: 'messaging-connect-api-key'
+              }
+            ])
+            {
+              name: 'MessagingConnect__Sender'
+              value: messagingConnectSender
+            }
             {
               name: 'Acs__SmsSenderId'
               value: acsSmsSenderId

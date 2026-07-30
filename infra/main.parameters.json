@@ -38,8 +38,17 @@
     "smsConnectionString": {
       "value": "${SMS_CONNECTION_STRING=}"
     },
+    "acsConnectionStringOverride": {
+      "value": "${ACS_CONNECTION_STRING_OVERRIDE=}"
+    },
     "acsSmsSenderId": {
       "value": "${ACS_SMS_SENDER_ID=}"
+    },
+    "messagingConnectApiKey": {
+      "value": "${MESSAGING_CONNECT_API_KEY=}"
+    },
+    "messagingConnectSender": {
+      "value": "${MESSAGING_CONNECT_SENDER=}"
     }
   }
 }
