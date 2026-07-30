@@ -206,8 +206,8 @@ azd env set ACS_DATA_LOCATION Europe
 azd up
 ```
 
-- **`postprovision`** buys a DK **geographic** number (voice → `AcsPhoneNumber`) — **empirically verified 2026-07-30**: search + purchase succeed via the data-plane API even where the portal buttons are greyed out. It also attempts a DK **mobile** number for two-way SMS, but the API answers `Unsupported phone number type` — **ACS does not sell DK mobile numbers today**, on any subscription. The attempt is best-effort and just warns.
-- **Two-way SMS for Denmark therefore runs through Messaging Connect** (§3, Infobip partner number — the Azure-native path) — or outbound-only via a registered alphanumeric sender (`ACS_SMS_SENDER_ID=Norlys`, needs an eligible non-sandbox subscription).
+- **`postprovision`** buys a DK **geographic** number (voice → `AcsPhoneNumber`) — **empirically verified 2026-07-30**: search + purchase succeed via the data-plane API even where the portal buttons are greyed out. It also attempts a DK **mobile** number for two-way SMS ($15/mo + $0.0499 send / $0.0075 receive per the ACS pricing page). Mobile requires an **eligible subscription with matching (Danish) billing address** — on ineligible subs the API answers `Unsupported phone number type`. The attempt is best-effort and just warns.
+- If mobile can't be bought (or registration is pending), **two-way SMS runs through Messaging Connect** (§3, Infobip partner number) — or outbound-only via a registered alphanumeric sender (`ACS_SMS_SENDER_ID=Norlys`, $0.0499/msg to DK, no monthly fee).
 - **`postdeploy`** runs `setup-eventgrid.ps1`, which subscribes **`Microsoft.Communication.IncomingCall`** → `/api/incomingCall` **and** **`Microsoft.Communication.SMSReceived`** → `/api/events/sms`, so **inbound replies work automatically**.
 
 The one step that can't be scripted: sender **registration** (alphanumeric via eligible sub, or a Messaging Connect number via Infobip, ~6 days for a branded DK sender). Voice is immediate.
@@ -218,7 +218,7 @@ The one step that can't be scripted: sender **registration** (alphanumeric via e
 
 - [ ] Deploy to a Norlys **EA / Pay-as-you-go** subscription (not a sandbox).
 - [ ] `azd env set PHONE_COUNTRY DK` + `azd env set ACS_DATA_LOCATION Europe` **before first `azd up`** → it buys the DK **voice** number (data location is immutable).
-- [ ] Two-way DK SMS: set up **Messaging Connect** (§3) — ACS sells no DK mobile numbers, so this is the two-way path.
+- [ ] Two-way DK SMS: buy the DK **mobile** number on the EA (Danish billing address required; azd up attempts it) — or use **Messaging Connect** (§3).
 - [ ] Email: verify **`norlys.dk`** in ACS Email — **or** run `scripts/grant-graph-mail-permissions.ps1` and set `GRAPH_SENDER_ADDRESS` for two-way Graph email (§4).
 - [ ] Inbound: confirm the Event Grid subscriptions exist (`scripts/setup-eventgrid.ps1`).
 - [ ] Leave `MessagingConnect:*` empty to use **native ACS** instead of the partner route.
