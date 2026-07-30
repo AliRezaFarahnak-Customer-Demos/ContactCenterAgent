@@ -74,19 +74,34 @@ hooks:
 
       if ($country -eq "US") {
         # US toll-free is the only ACS number carrying voice AND two-way SMS,
-        # so a single number backs both env vars.
-        ./scripts/provision-phone-number.ps1 -ResourceGroup $rg -AcsResourceName $acs -ContainerAppName $ca `
-          -CountryCode "US" -PhoneNumberType "tollFree" `
-          -CallingCapability "inbound+outbound" -SmsCapability "inbound+outbound" `
-          -EnvVarNames "AcsPhoneNumber","AcsSmsNumber" `
-          -AzdEnvVarNames "ACS_PHONE_NUMBER","ACS_SMS_NUMBER"
+        # so a single number backs both env vars. Best-effort: a purchase failure
+        # must not abort azd up between provision and deploy — the services still
+        # roll out, and the number can be bought later (portal or re-run script).
+        try {
+          ./scripts/provision-phone-number.ps1 -ResourceGroup $rg -AcsResourceName $acs -ContainerAppName $ca `
+            -CountryCode "US" -PhoneNumberType "tollFree" `
+            -CallingCapability "inbound+outbound" -SmsCapability "inbound+outbound" `
+            -EnvVarNames "AcsPhoneNumber","AcsSmsNumber" `
+            -AzdEnvVarNames "ACS_PHONE_NUMBER","ACS_SMS_NUMBER"
+        } catch {
+          Write-Warning "[postprovision] US toll-free number not provisioned: $($_.Exception.Message)"
+          Write-Warning "  Deploy continues. Buy a number in the portal (ACS -> Phone numbers) or re-run"
+          Write-Warning "  scripts/provision-phone-number.ps1, then azd provision to persist it."
+        }
       }
       else {
         # Denmark (and most of EU) has no combined number: geographic/tollFree
-        # carry voice, mobile carries SMS. Two numbers required.
-        ./scripts/provision-phone-number.ps1 -ResourceGroup $rg -AcsResourceName $acs -ContainerAppName $ca `
-          -CountryCode $country -PhoneNumberType "geographic" `
-          -EnvVarNames "AcsPhoneNumber" -AzdEnvVarNames "ACS_PHONE_NUMBER"
+        # carry voice, mobile carries SMS. Two numbers required. Both best-effort
+        # (EU geographic numbers can require regulatory/address review).
+        try {
+          ./scripts/provision-phone-number.ps1 -ResourceGroup $rg -AcsResourceName $acs -ContainerAppName $ca `
+            -CountryCode $country -PhoneNumberType "geographic" `
+            -EnvVarNames "AcsPhoneNumber" -AzdEnvVarNames "ACS_PHONE_NUMBER"
+        } catch {
+          Write-Warning "[postprovision] $country geographic (voice) number not provisioned: $($_.Exception.Message)"
+          Write-Warning "  Deploy continues without a voice number. Buy one in the portal or re-run"
+          Write-Warning "  scripts/provision-phone-number.ps1, then azd provision."
+        }
 
         # SMS number is best-effort: mobile numbers can need regulatory review and
         # SMS delivery only starts after registration. Must not block the voice demo.

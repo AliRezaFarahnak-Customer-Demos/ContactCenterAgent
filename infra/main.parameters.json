@@ -28,6 +28,12 @@
     },
     "resourceNameSuffix": {
       "value": "${RESOURCE_NAME_SUFFIX=}"
+    },
+    "lunaCapacity": {
+      "value": "${AOAI_LUNA_CAPACITY=1000}"
+    },
+    "realtimeCapacity": {
+      "value": "${AOAI_REALTIME_CAPACITY=10}"
     }
   }
 }

@@ -12,6 +12,12 @@ param resourcePrefix string
 @description('Suffix appended to globally-unique resource names only (container registry, Cosmos account, AI Foundry endpoint subdomain).')
 param nameSuffix string = ''
 
+@description('TPM capacity (thousands) for gpt-5.6-luna.')
+param lunaCapacity int = 1000
+
+@description('TPM capacity (thousands) for gpt-realtime-2.1.')
+param realtimeCapacity int = 10
+
 @description('Name for the AI Foundry project')
 param aiProjectName string = 'cog-${resourcePrefix}-prj'
 
@@ -89,7 +95,7 @@ resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2026-
   parent: aiFoundry
   name: 'gpt-5.6-luna'
   sku: {
-    capacity: 1000
+    capacity: lunaCapacity
     name: 'GlobalStandard'
   }
   properties: {
@@ -113,7 +119,7 @@ resource realtimeModelDeployment 'Microsoft.CognitiveServices/accounts/deploymen
   name: 'gpt-realtime-2.1'
   dependsOn: [modelDeployment] // Serial deployment to avoid conflicts
   sku: {
-    capacity: 10 // Tier 1 quota limit for the gpt-realtime family is 10 — request increase via https://aka.ms/oai/stuquotarequest
+    capacity: realtimeCapacity // Tier 1 quota limit for the gpt-realtime family is 10 — request increase via https://aka.ms/oai/stuquotarequest
     name: 'GlobalStandard'
   }
   properties: {

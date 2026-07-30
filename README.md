@@ -173,11 +173,26 @@ az containerapp update  -n ca-caller-agent -g <rg> \
 
 ## 8. Deploy
 
+Prerequisites: `azd` ≥ 1.24, **Azure CLI logged into the same tenant** (`az login` — the
+post-provision hooks drive `az`), PowerShell 7. No local Docker needed (images build remotely in ACR).
+
 ```powershell
 azd up                     # provision + deploy both services
 azd deploy caller-agent    # phone/SMS/email service only
 azd deploy admin-chat      # dashboard only
 ```
+
+If `azd up` fails on model quota, lower the capacities and retry — no code change:
+
+```powershell
+azd env set AOAI_LUNA_CAPACITY 150     # drafting/analysis model (default 1000)
+azd env set AOAI_REALTIME_CAPACITY 10  # voice model (Tier-1 quota cap is 10)
+azd up
+```
+
+Phone-number purchase is **best-effort**: if it fails (quota, regulatory review, eligibility),
+the services still deploy and the warning tells you how to buy the number afterwards — the app
+only needs `AcsPhoneNumber` at call time.
 
 ### Danish numbers end-to-end (`azd up` buys them)
 
@@ -191,7 +206,7 @@ azd env set ACS_DATA_LOCATION Europe
 azd up
 ```
 
-- **`postprovision`** buys a DK **geographic** number (voice → `AcsPhoneNumber`) **and** a DK **mobile** number with `inbound+outbound` SMS (**two-way** → `AcsSmsNumber`). Denmark has no single number that does both, so two are bought. The SMS purchase is best-effort and never blocks voice.
+- **`postprovision`** buys a DK **geographic** number (voice → `AcsPhoneNumber`) and attempts a DK **mobile** number with `inbound+outbound` SMS (**two-way** → `AcsSmsNumber`). Denmark has no single number that does both, so two are bought. Both purchases are best-effort; **verify DK mobile availability for your subscription in the portal first** (ACS number availability varies by country/offer — if mobile isn't offered, use Messaging Connect §3 or an alphanumeric sender for outbound-only).
 - **`postdeploy`** runs `setup-eventgrid.ps1`, which subscribes **`Microsoft.Communication.IncomingCall`** → `/api/incomingCall` **and** **`Microsoft.Communication.SMSReceived`** → `/api/events/sms`, so **inbound replies work automatically**.
 
 The one step that can't be scripted: Danish mobile numbers need **carrier/regulatory registration**, and SMS delivery only starts once approved (~1–3 weeks). Voice is immediate.
@@ -209,6 +224,8 @@ The one step that can't be scripted: Danish mobile numbers need **carrier/regula
 - [ ] Set `Outreach:AllowSimulatedReplies=false`.
 - [ ] Store all keys as secrets; add them to Bicep so deploys don't wipe them.
 - [ ] Confirm Azure OpenAI capacity/region for the chosen models.
+- [ ] **Lock the dashboard**: enable Easy Auth (Entra) on `ca-admin-chat` — it deploys **public**. Pin `openIdIssuer` to your tenant (not `/common/`) and allow-list users via `allowedPrincipals.identities`.
+- [ ] **Protect the MCP/REST surface**: it's anonymous by design for the PoC — front `ca-caller-agent` with API Management (your MCP registry) or Easy Auth before production.
 
 ---
 
