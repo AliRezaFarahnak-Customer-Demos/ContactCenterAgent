@@ -207,6 +207,11 @@ azd deploy caller-agent    # phone/SMS/email service only
 azd deploy admin-chat      # dashboard only
 ```
 
+> **Always follow `azd provision` with `azd deploy`.** The container apps are declared with a
+> placeholder image (`mcr.microsoft.com/k8se/quickstart`), so a standalone `azd provision`
+> rolls a revision running the placeholder instead of your code. `azd up` does both, so this
+> only bites when provisioning on its own (e.g. after changing an env var).
+
 If `azd up` fails on model quota, the defaults are already quota-friendly — raise them when quota allows:
 
 ```powershell
