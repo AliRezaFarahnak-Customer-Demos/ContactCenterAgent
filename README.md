@@ -182,10 +182,10 @@ azd deploy caller-agent    # phone/SMS/email service only
 azd deploy admin-chat      # dashboard only
 ```
 
-If `azd up` fails on model quota, lower the capacities and retry — no code change:
+If `azd up` fails on model quota, the defaults are already quota-friendly — raise them when quota allows:
 
 ```powershell
-azd env set AOAI_LUNA_CAPACITY 150     # drafting/analysis model (default 1000)
+azd env set AOAI_LUNA_CAPACITY 1000    # drafting/analysis model (default 150)
 azd env set AOAI_REALTIME_CAPACITY 10  # voice model (Tier-1 quota cap is 10)
 azd up
 ```

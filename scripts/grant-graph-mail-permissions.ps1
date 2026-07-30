@@ -52,8 +52,16 @@ if (-not $principalId) {
 Write-Host "Managed identity principal: $principalId"
 
 # 2. Microsoft Graph service principal in this tenant
-$graphSpId = az ad sp show --id $GRAPH_APP_ID --query id -o tsv
-$appRoles = az ad sp show --id $GRAPH_APP_ID --query "appRoles" -o json | ConvertFrom-Json
+$graphSpId = az ad sp show --id $GRAPH_APP_ID --query id -o tsv 2>$null
+$appRoles = az ad sp show --id $GRAPH_APP_ID --query "appRoles" -o json 2>$null | ConvertFrom-Json
+if (-not $graphSpId -or -not $appRoles) {
+    # Typically a stale/CAE-challenged az token. The grant is idempotent and may already be in
+    # place (it survives across runs), so warn instead of failing the whole azd up.
+    Write-Warning "Cannot read Microsoft Graph metadata with the current az login (token challenge?)."
+    Write-Warning "If mail perms are missing, run 'az login --scope https://graph.microsoft.com/.default'"
+    Write-Warning "and re-run this script. Skipping without error."
+    exit 0
+}
 
 # 3. What's already assigned (idempotency)
 $existing = az rest --method get `

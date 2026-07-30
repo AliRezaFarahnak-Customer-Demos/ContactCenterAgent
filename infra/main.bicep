@@ -33,11 +33,18 @@ param customDomainWww string = ''
 @description('Suffix for globally-unique names (container registry, Cosmos, AI Foundry endpoint). Empty = derive from the subscription id so any subscription can deploy this template. Use "none" to keep the original unsuffixed names.')
 param resourceNameSuffix string = ''
 
-@description('TPM capacity (in thousands) for the gpt-5.6-luna deployment. Lower it if the target subscription has less GlobalStandard quota.')
-param lunaCapacity int = 1000
+@description('TPM capacity (in thousands) for the gpt-5.6-luna deployment. Default is quota-friendly for fresh subscriptions; raise via AOAI_LUNA_CAPACITY when quota allows.')
+param lunaCapacity int = 150
 
 @description('TPM capacity (in thousands) for the gpt-realtime-2.1 deployment. Tier 1 quota for the realtime family is 10.')
 param realtimeCapacity int = 10
+
+@secure()
+@description('Connection string of a SEPARATE SMS-capable ACS resource (eligible PAYG/EA sub). Empty = SMS uses the main ACS resource.')
+param smsConnectionString string = ''
+
+@description('Registered alphanumeric sender ID (e.g. "Norlys") for branded outbound-only SMS outside US/CA.')
+param acsSmsSenderId string = ''
 
 // Fixed naming prefix — all resource names derive from this, NOT from the azd env name
 var resourcePrefix = 'contactcenteragent'
@@ -82,6 +89,8 @@ module resources 'resources.bicep' = {
     acsDataLocation: acsDataLocation
     acsPhoneNumber: acsPhoneNumber
     acsSmsNumber: acsSmsNumber
+    smsConnectionString: smsConnectionString
+    acsSmsSenderId: acsSmsSenderId
     graphSenderAddress: graphSenderAddress
     customDomain: customDomain
     customDomainWww: customDomainWww

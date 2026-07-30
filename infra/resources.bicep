@@ -13,7 +13,7 @@ param resourcePrefix string
 param nameSuffix string = ''
 
 @description('TPM capacity (thousands) for gpt-5.6-luna.')
-param lunaCapacity int = 1000
+param lunaCapacity int = 150
 
 @description('TPM capacity (thousands) for gpt-realtime-2.1.')
 param realtimeCapacity int = 10
@@ -38,6 +38,13 @@ param acsSmsNumber string = ''
 
 @description('Mailbox for Graph sendMail + inbound reply polling. Empty = ACS Email.')
 param graphSenderAddress string = ''
+
+@secure()
+@description('Connection string of a separate SMS-capable ACS resource. Empty = SMS uses the main ACS resource.')
+param smsConnectionString string = ''
+
+@description('Registered alphanumeric sender ID for branded outbound-only SMS outside US/CA.')
+param acsSmsSenderId string = ''
 
 // ACS rejects numbers without the leading '+'. azd env round-tripping has been seen to
 // drop it, so normalize here rather than trusting the caller.
@@ -536,6 +543,12 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
           name: 'acs-connection-string'
           value: acs.listKeys().primaryConnectionString
         }
+        ...(empty(smsConnectionString) ? [] : [
+          {
+            name: 'sms-connection-string'
+            value: smsConnectionString
+          }
+        ])
       ]
     }
     template: {
@@ -586,6 +599,17 @@ resource callerAgentApp 'Microsoft.App/containerApps@2026-01-01' = {
             {
               name: 'AcsSmsNumber'
               value: acsSmsNumberE164
+            }
+            // ─── SMS on a separate eligible ACS resource + branded sender ───
+            ...(empty(smsConnectionString) ? [] : [
+              {
+                name: 'Sms__ConnectionString'
+                secretRef: 'sms-connection-string'
+              }
+            ])
+            {
+              name: 'Acs__SmsSenderId'
+              value: acsSmsSenderId
             }
             // ─── Outreach persistence + channels ─────────────────────────
             {

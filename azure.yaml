@@ -132,6 +132,11 @@ hooks:
       else {
         Write-Host "[postprovision] GRAPH_SENDER_ADDRESS not set — email stays on ACS (outbound only)."
       }
+
+      # Everything above is best-effort by design (each step warns + explains recovery).
+      # Without this, pwsh propagates the LAST az call's exit code and a benign warning
+      # path can abort azd up between provision and deploy.
+      exit 0
     interactive: false
     continueOnError: false
 

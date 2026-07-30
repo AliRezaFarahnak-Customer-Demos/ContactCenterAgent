@@ -62,19 +62,19 @@ public sealed class OutreachService
         _telemetry = telemetry;
 
         var acsConn = config["AcsConnectionString"];
-        _smsNumber = config["AcsSmsNumber"];
-        // Optional alphanumeric sender ID. NOT enabled on this US-data-location resource
-        // (ACS returns 401), so it stays empty unless a registered sender is explicitly configured.
-        _smsSenderId = config["Acs:SmsSenderId"];
-        _emailSender = config["Email:SenderAddress"];
+        // Bicep materializes unset settings as EMPTY STRINGS, which are non-null and poison
+        // ?? chains — normalize every optional config read to null.
+        _smsNumber = NullIfEmpty(config["AcsSmsNumber"]);
+        // Optional alphanumeric sender ID for branded outbound-only SMS outside US/CA.
+        _smsSenderId = NullIfEmpty(config["Acs:SmsSenderId"]);
+        _emailSender = NullIfEmpty(config["Email:SenderAddress"]);
         // Messaging Connect partner API key (Infobip, scope sms:message:send). The sender/number below
         // MUST be one Infobip has provisioned AND synced back to this ACS resource, otherwise ACS 401s.
         // Empty strings are treated as unset so a placeholder in appsettings.json stays inert.
-        _mcApiKey = config["MessagingConnect:ApiKey"];
+        _mcApiKey = NullIfEmpty(config["MessagingConnect:ApiKey"]);
         var partner = config["MessagingConnect:Partner"];
         _mcPartner = string.IsNullOrWhiteSpace(partner) ? "infobip" : partner!;
-        var mcSender = config["MessagingConnect:Sender"];
-        _mcFrom = string.IsNullOrWhiteSpace(mcSender) ? _smsSenderId : mcSender;
+        _mcFrom = NullIfEmpty(config["MessagingConnect:Sender"]) ?? _smsSenderId;
 
         var graphSender = config["Graph:SenderAddress"];
         _graphSender = string.IsNullOrWhiteSpace(graphSender) ? null : graphSender!.Trim();
@@ -91,6 +91,16 @@ public sealed class OutreachService
         {
             _smsClient = new SmsClient(acsConn);
             _emailClient = new EmailClient(acsConn);
+        }
+
+        // SMS can live on a DIFFERENT ACS resource than voice/email: number purchase and
+        // alphanumeric senders require an eligible (PAYG/EA/CSP) subscription, so a sandbox
+        // deployment keeps voice here and points Sms:ConnectionString at the eligible resource.
+        var smsConn = config["Sms:ConnectionString"];
+        if (!string.IsNullOrWhiteSpace(smsConn))
+        {
+            _smsClient = new SmsClient(smsConn);
+            _logger.LogInformation("SMS uses a dedicated ACS resource (Sms:ConnectionString).");
         }
     }
 
@@ -291,11 +301,15 @@ public sealed class OutreachService
                     return true;
                 }
 
-                // The only sender authorized on this US-data-location resource is the toll-free
-                // NUMBER; the alphanumeric sender ID returns 401 here, so prefer the number.
+                // Sender routing: SMS senders are country-scoped, so the toll-free number only
+                // reaches +1; everything else goes via the registered alphanumeric sender when
+                // one is configured (branded, outbound-only). A name has no inbox, so replies
+                // are only possible when sending from the number to +1.
+                var isUsDestination = to.StartsWith("+1");
                 string smsFrom;
-                if (!string.IsNullOrWhiteSpace(_smsNumber)) smsFrom = _smsNumber!;
+                if (isUsDestination && !string.IsNullOrWhiteSpace(_smsNumber)) smsFrom = _smsNumber!;
                 else if (!string.IsNullOrWhiteSpace(_smsSenderId)) smsFrom = _smsSenderId!;
+                else if (!string.IsNullOrWhiteSpace(_smsNumber)) smsFrom = _smsNumber!;
                 else throw new InvalidOperationException("Ingen SMS-afsender konfigureret.");
 
                 Azure.Response<SmsSendResult> smsResp;
@@ -307,12 +321,11 @@ public sealed class OutreachService
                 {
                     throw new InvalidOperationException(
                         $"SMS kunne ikke sendes fra '{smsFrom}' (HTTP {rfe.Status}). " +
-                        (to.StartsWith("+1") ? "" : "Dette US-baserede ACS-resource sender to-vejs SMS til US/Canada; SMS til andre lande (fx +45) kræver et lokalt afsendernummer."));
+                        (isUsDestination ? "" : "SMS til lande uden for US/Canada kræver en registreret alfanumerisk afsender (Acs:SmsSenderId), et lokalt nummer eller Messaging Connect."));
                 }
                 if (!smsResp.Value.Successful)
                     throw new InvalidOperationException($"SMS afvist af ACS (HTTP {smsResp.Value.HttpStatusCode}): {smsResp.Value.ErrorMessage}");
-                // Replies only route back for US/CA (+1) on our toll-free; other countries are one-way.
-                return to.StartsWith("+1");
+                return isUsDestination && smsFrom == _smsNumber;
 
             case "email":
                 if (!EmailEnabled || string.IsNullOrWhiteSpace(email))
@@ -601,6 +614,9 @@ public sealed class OutreachService
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+    private static string? NullIfEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>Lowercase emails, trim everything — reply matching must not depend on sender casing.</summary>
     private static string? NormalizeAddress(string? address)

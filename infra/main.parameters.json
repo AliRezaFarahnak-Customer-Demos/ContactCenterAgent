@@ -30,10 +30,16 @@
       "value": "${RESOURCE_NAME_SUFFIX=}"
     },
     "lunaCapacity": {
-      "value": "${AOAI_LUNA_CAPACITY=1000}"
+      "value": "${AOAI_LUNA_CAPACITY=150}"
     },
     "realtimeCapacity": {
       "value": "${AOAI_REALTIME_CAPACITY=10}"
+    },
+    "smsConnectionString": {
+      "value": "${SMS_CONNECTION_STRING=}"
+    },
+    "acsSmsSenderId": {
+      "value": "${ACS_SMS_SENDER_ID=}"
     }
   }
 }
