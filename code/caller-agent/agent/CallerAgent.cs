@@ -103,6 +103,7 @@ builder.Services.AddSingleton(sp => new OutreachService(
     sp.GetRequiredService<ILogger<OutreachService>>(), sp.GetService<TelemetryClient>()));
 // Captures email replies from a mailbox when Graph:SenderAddress is set; no-op otherwise.
 builder.Services.AddHostedService<GraphInboxPoller>();
+builder.Services.AddHostedService<CallbackDispatcher>();
 builder.Services.AddMcpServer().WithHttpTransport().WithTools<OutreachTools>();
 
 var app = builder.Build();
@@ -870,7 +871,16 @@ app.MapGet("/api/calls/history", (ILogger<Program> logger) =>
 // Outreach — unified voice / SMS / email surface (REST). Mirrored by MCP tools.
 // ---------------------------------------------------------------------------
 app.MapPost("/api/outreach", async ([FromBody] OutreachRequest request, OutreachService outreach) =>
-    Results.Ok(await outreach.StartAsync(request)));
+{
+    try
+    {
+        return Results.Ok(await outreach.StartAsync(request));
+    }
+    catch (OutreachConflictException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+});
 
 app.MapGet("/api/outreach", async (int? limit, OutreachService outreach) =>
     Results.Ok(await outreach.ListRecentAsync(limit ?? 50)));
@@ -885,8 +895,21 @@ app.MapPost("/api/outreach/{id}/followup", async (string id, [FromBody] FollowUp
 {
     if (string.IsNullOrWhiteSpace(req.Message))
         return Results.BadRequest(new { error = "message is required" });
-    var result = await outreach.SendFollowUpAsync(id, req.Message, req.Channel, req.Subject);
+    var result = await outreach.SendFollowUpAsync(id, req.Message, req.Channel, req.Subject, req.ClientRequestId);
     return result is null ? Results.NotFound() : Results.Ok(result);
+});
+
+app.MapPost("/api/outreach/{id}/callback/retry", async (string id, OutreachService outreach, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await outreach.RetryCallbackAsync(id, cancellationToken);
+        return result is null ? Results.NotFound() : Results.Ok(result);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 app.MapGet("/api/personas", (OutreachService outreach) => Results.Ok(outreach.ListPersonas()));
@@ -940,7 +963,7 @@ app.MapPost("/api/events/sms", async ([FromBody] EventGridEvent[] events, Outrea
             if (data is AcsSmsReceivedEventData sms)
             {
                 logger.LogInformation("Inbound SMS from {From}", sms.From);
-                await outreach.HandleInboundSmsAsync(sms.From, sms.Message);
+                await outreach.HandleInboundSmsAsync(sms.From, sms.Message, e.Id);
             }
         }
     }
@@ -962,7 +985,7 @@ app.MapPost("/api/events/email", async ([FromBody] EventGridEvent[] events, Outr
             if (!string.IsNullOrWhiteSpace(from))
             {
                 logger.LogInformation("Inbound email from {From}", from);
-                await outreach.HandleInboundEmailAsync(from, subject, body);
+                await outreach.HandleInboundEmailAsync(from, subject, body, e.Id);
             }
         }
         catch (Exception ex) { logger.LogWarning(ex, "Failed to parse inbound email event"); }
@@ -978,6 +1001,6 @@ app.MapMcp("/mcp");
 app.Run();
 
 record OutboundCallRequest(string PhoneNumber, string? Purpose, string? SystemPrompt, string? Name, string? Language, string? LanguageCode, string? TranscriptionHint, string? Voice, string? VoiceStyle);
-record FollowUpRequest(string Message, string? Channel = null, string? Subject = null);
+record FollowUpRequest(string Message, string? Channel = null, string? Subject = null, string? ClientRequestId = null);
 public record TranscriptionEvent(string Speaker, string Text, DateTime Timestamp);
 public record CallLogEntry(string Direction, string PhoneNumber, string Status, string ContextId, string? Name, string? Purpose, DateTimeOffset Timestamp);

@@ -28,8 +28,9 @@ public sealed class GraphInboxPoller : BackgroundService
     private readonly TokenCredential _credential = new DefaultAzureCredential();
     private readonly string? _mailbox;
     private readonly TimeSpan _interval;
-    private readonly HashSet<string> _seen = new();
-    private readonly DateTimeOffset _since = DateTimeOffset.UtcNow;
+    private readonly int _lookbackDays;
+    // Unrelated mail stays unread forever, so remember what was already ruled out.
+    private readonly HashSet<string> _skipped = new(StringComparer.Ordinal);
 
     public GraphInboxPoller(OutreachService outreach, IConfiguration config, ILogger<GraphInboxPoller> logger)
     {
@@ -39,6 +40,7 @@ public sealed class GraphInboxPoller : BackgroundService
         var mailbox = config["Graph:SenderAddress"];
         _mailbox = string.IsNullOrWhiteSpace(mailbox) ? null : mailbox.Trim();
         _interval = TimeSpan.FromSeconds(Math.Max(10, config.GetValue<int?>("Graph:PollSeconds") ?? 30));
+        _lookbackDays = Math.Clamp(config.GetValue<int>("Graph:ReplyLookbackDays", 30), 1, 90);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -73,45 +75,61 @@ public sealed class GraphInboxPoller : BackgroundService
         var token = await _credential.GetTokenAsync(
             new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" }), ct);
 
-        var since = _since.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
-        var filter = Uri.EscapeDataString($"isRead eq false and receivedDateTime gt {since}");
+        var since = DateTimeOffset.UtcNow.AddDays(-_lookbackDays).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var filter = Uri.EscapeDataString($"isRead eq false and receivedDateTime ge {since}");
         var url = $"{GraphBase}/users/{Uri.EscapeDataString(_mailbox!)}/mailFolders/inbox/messages" +
-                  $"?$filter={filter}&$top=25&$orderby=receivedDateTime%20asc" +
-                  "&$select=id,subject,bodyPreview,from";
+                  $"?$filter={filter}&$top=50&$orderby=receivedDateTime%20asc" +
+                  "&$select=id,subject,body,from,conversationId,receivedDateTime";
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token.Token}");
-
-        var resp = await s_http.SendAsync(request, ct);
-        if (!resp.IsSuccessStatusCode)
+        for (var page = 0; page < 10 && !string.IsNullOrWhiteSpace(url); page++)
         {
-            _logger.LogWarning("Graph inbox read failed (HTTP {Status}): {Body}",
-                (int)resp.StatusCode, await resp.Content.ReadAsStringAsync(ct));
-            return;
-        }
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token.Token}");
+            request.Headers.TryAddWithoutValidation("Prefer", "outlook.body-content-type=\"text\"");
 
-        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
-        if (!doc.RootElement.TryGetProperty("value", out var messages)) return;
+            var resp = await s_http.SendAsync(request, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Graph inbox read failed (HTTP {Status}): {Body}",
+                    (int)resp.StatusCode, await resp.Content.ReadAsStringAsync(ct));
+                return;
+            }
 
-        foreach (var m in messages.EnumerateArray())
-        {
-            var id = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-            if (string.IsNullOrEmpty(id) || !_seen.Add(id)) continue;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("value", out var messages)) return;
 
-            var from = m.TryGetProperty("from", out var f)
-                       && f.TryGetProperty("emailAddress", out var addr)
-                       && addr.TryGetProperty("address", out var a)
-                ? a.GetString() : null;
-            if (string.IsNullOrWhiteSpace(from)) continue;
+            foreach (var m in messages.EnumerateArray())
+            {
+                var id = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                if (string.IsNullOrEmpty(id) || _skipped.Contains(id)) continue;
 
-            var subject = m.TryGetProperty("subject", out var s) ? s.GetString() ?? "" : "";
-            var body = m.TryGetProperty("bodyPreview", out var b) ? b.GetString() ?? "" : "";
+                var from = m.TryGetProperty("from", out var f)
+                           && f.TryGetProperty("emailAddress", out var addr)
+                           && addr.TryGetProperty("address", out var a)
+                    ? a.GetString() : null;
+                if (string.IsNullOrWhiteSpace(from)) continue;
 
-            // Unrelated mail is left unread and untouched — this may be a real person's mailbox.
-            if (!await _outreach.TryHandleInboundEmailAsync(from!, subject, body)) continue;
+                var subject = m.TryGetProperty("subject", out var s) ? s.GetString() ?? "" : "";
+                var body = m.TryGetProperty("body", out var b)
+                           && b.TryGetProperty("content", out var content)
+                    ? content.GetString() ?? "" : "";
+                var conversationId = m.TryGetProperty("conversationId", out var c) ? c.GetString() : null;
 
-            _logger.LogInformation("Threaded email reply from {From}", from);
-            await MarkReadAsync(id!, token.Token, ct);
+                // Unrelated mail is left unread and untouched — this may be a real person's mailbox.
+                if (!await _outreach.TryHandleInboundEmailAsync(from!, subject, body, id, conversationId))
+                {
+                    if (_skipped.Count > 5000) _skipped.Clear();
+                    _skipped.Add(id);
+                    continue;
+                }
+
+                _logger.LogInformation("Threaded email reply from {From}", from);
+                await MarkReadAsync(id, token.Token, ct);
+            }
+
+            url = doc.RootElement.TryGetProperty("@odata.nextLink", out var next)
+                ? next.GetString() ?? ""
+                : "";
         }
     }
 

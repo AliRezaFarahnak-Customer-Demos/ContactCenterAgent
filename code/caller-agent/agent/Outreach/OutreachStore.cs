@@ -120,6 +120,37 @@ public sealed class OutreachStore
         return await QuerySingleAsync(q);
     }
 
+    public async Task<OutreachRecord?> FindByClientRequestIdAsync(string clientRequestId)
+    {
+        if (_container is null)
+            return _memory.Values.FirstOrDefault(r => r.ClientRequestId == clientRequestId);
+
+        var q = new QueryDefinition("SELECT * FROM c WHERE c.clientRequestId = @requestId")
+            .WithParameter("@requestId", clientRequestId);
+        return await QuerySingleAsync(q);
+    }
+
+    public async Task<OutreachRecord?> FindByEmailConversationIdAsync(string conversationId)
+    {
+        if (_container is null)
+            return _memory.Values.FirstOrDefault(r => r.EmailConversationId == conversationId);
+
+        var q = new QueryDefinition("SELECT * FROM c WHERE c.emailConversationId = @conversationId")
+            .WithParameter("@conversationId", conversationId);
+        return await QuerySingleAsync(q);
+    }
+
+    /// <summary>Resolve the short reference carried in outbound email subjects back to its outreach.</summary>
+    public async Task<OutreachRecord?> FindByIdPrefixAsync(string prefix)
+    {
+        if (_container is null)
+            return _memory.Values.FirstOrDefault(r => r.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+        var q = new QueryDefinition("SELECT * FROM c WHERE STARTSWITH(c.id, @prefix, true)")
+            .WithParameter("@prefix", prefix);
+        return await QuerySingleAsync(q);
+    }
+
     public async Task<OutreachRecord?> FindByContextIdAsync(string contextId)
     {
         if (_container is null)
@@ -188,6 +219,20 @@ public sealed class OutreachStore
             return _memory.Values.OrderByDescending(r => r.CreatedUtc).Take(limit).ToList();
 
         var q = new QueryDefinition("SELECT * FROM c ORDER BY c.createdUtc DESC");
+        return await QueryListAsync(q, new QueryRequestOptions { MaxItemCount = limit }, limit);
+    }
+
+    /// <summary>
+    /// Every outreach still awaiting callback delivery. The due-time comparison is deliberately left
+    /// to the caller: persisted timestamps are ISO strings whose format differs from a query
+    /// parameter's, so comparing them inside Cosmos is not reliable.
+    /// </summary>
+    public async Task<IReadOnlyList<OutreachRecord>> ListPendingCallbacksAsync(int limit = 100)
+    {
+        if (_container is null)
+            return _memory.Values.Where(record => record.CallbackStatus == "pending").Take(limit).ToList();
+
+        var q = new QueryDefinition("SELECT * FROM c WHERE c.callbackStatus = 'pending'");
         return await QueryListAsync(q, new QueryRequestOptions { MaxItemCount = limit }, limit);
     }
 

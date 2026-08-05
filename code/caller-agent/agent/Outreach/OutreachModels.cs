@@ -22,7 +22,8 @@ public record OutreachRequest(
     string? Persona = null,
     string? Locale = null,
     string? Voice = null,
-    string? VoiceStyle = null);
+    string? VoiceStyle = null,
+    string? ClientRequestId = null);     // idempotency key supplied by the calling agent
 
 /// <summary>Structured result handed back to the calling agent.</summary>
 public record OutreachResult(
@@ -37,9 +38,20 @@ public record OutreachResult(
     string? Summary,
     string? Outcome,
     string[]? Topics,
+    CallbackDelivery Callback,
     IReadOnlyList<Interaction> Interactions,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc);
+
+public record CallbackDelivery(
+    string Status,                      // not_requested | waiting | pending | delivered | dead_lettered
+    int Attempts,
+    DateTimeOffset? NextAttemptUtc,
+    DateTimeOffset? DeliveredUtc,
+    string? LastError);
+
+/// <summary>Raised when a clientRequestId is reused for a materially different request.</summary>
+public sealed class OutreachConflictException(string message) : Exception(message);
 
 /// <summary>Capability descriptor returned by list_channels / GET /api/channels.</summary>
 public record ChannelCapability(
@@ -98,6 +110,16 @@ public class OutreachRecord
     [JsonProperty("metrics")] public Dictionary<string, string>? Metrics { get; set; }
     [JsonProperty("context")] public Dictionary<string, string>? Context { get; set; }
     [JsonProperty("callbackUrl")] public string? CallbackUrl { get; set; }
+    [JsonProperty("callbackStatus")] public string CallbackStatus { get; set; } = "not_requested";
+    [JsonProperty("callbackAttempts")] public int CallbackAttempts { get; set; }
+    [JsonProperty("callbackNextAttemptUtc")] public DateTimeOffset? CallbackNextAttemptUtc { get; set; }
+    [JsonProperty("callbackDeliveredUtc")] public DateTimeOffset? CallbackDeliveredUtc { get; set; }
+    [JsonProperty("callbackLastError")] public string? CallbackLastError { get; set; }
+    [JsonProperty("clientRequestId")] public string? ClientRequestId { get; set; }
+    [JsonProperty("requestFingerprint")] public string? RequestFingerprint { get; set; }
+    [JsonProperty("processedRequestIds")] public List<string> ProcessedRequestIds { get; set; } = new();
+    [JsonProperty("processedInboundIds")] public List<string> ProcessedInboundIds { get; set; } = new();
+    [JsonProperty("emailConversationId")] public string? EmailConversationId { get; set; }
     [JsonProperty("contextId")] public string? ContextId { get; set; }   // voice-call correlation id
     [JsonProperty("persona")] public string? Persona { get; set; }
     [JsonProperty("subject")] public string? Subject { get; set; }
@@ -118,6 +140,9 @@ public class OutreachRecord
         Summary: Summary,
         Outcome: Outcome,
         Topics: Topics.ToArray(),
+        Callback: new CallbackDelivery(
+            CallbackStatus, CallbackAttempts, CallbackNextAttemptUtc,
+            CallbackDeliveredUtc, CallbackLastError),
         Interactions: Interactions,
         CreatedUtc: CreatedUtc,
         UpdatedUtc: UpdatedUtc);
