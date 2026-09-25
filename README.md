@@ -52,15 +52,15 @@ worth using for a live consumer-facing rollout.
 
 ### How it meets the PoC requirements
 
-| Your requirement                                   | How it works                                                                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Callable REST **and/or** MCP                       | Both, same engine behind each.                                                                                     |
-| Input: customer, channel, message/intent + context | One `start_outreach` call. Give an `intent` and the AI writes the message, or supply exact wording yourself.       |
+| Your requirement                                   | How it works                                                                                                                                                                                                                                                          |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Callable REST **and/or** MCP                       | Both, same engine behind each.                                                                                                                                                                                                                                        |
+| Input: customer, channel, message/intent + context | One `start_outreach` call. Give an `intent` and the AI writes the message, or supply exact wording yourself.                                                                                                                                                          |
 | Structured output back to the calling agent        | Every call returns `OutreachResult` — reply, collected fields, summary, outcome, topics, metrics, full timeline. Delivered as MCP `structuredContent` against a published `outputSchema`, so your agent gets a typed, validatable contract rather than text to parse. |
-| Async / callback for slow channels                 | Choose one: `wait_for_outreach_result` (blocks), poll `get_outreach_result`, or give a `callbackUrl` to be pushed. |
-| One service across voice, SMS, email               | Same tool for all three. `channel: "auto"` lets the service pick based on what you know about the customer.        |
-| Sentiment + extensible LLM output                  | Satisfaction, problem-solved, sentiment, frustration, churn risk on every channel. Scores are 0–6, 3 = neutral.    |
-| Portable to Norlys's Azure                         | All channel wiring is configuration (§7); one `azd up` deploys the whole thing to any subscription.                |
+| Async / callback for slow channels                 | Choose one: `wait_for_outreach_result` (blocks), poll `get_outreach_result`, or give a `callbackUrl` to be pushed.                                                                                                                                                    |
+| One service across voice, SMS, email               | Same tool for all three. `channel: "auto"` lets the service pick based on what you know about the customer.                                                                                                                                                           |
+| Sentiment + extensible LLM output                  | Satisfaction, problem-solved, sentiment, frustration, churn risk on every channel. Scores are 0–6, 3 = neutral.                                                                                                                                                       |
+| Portable to Norlys's Azure                         | All channel wiring is configuration (§7); one `azd up` deploys the whole thing to any subscription.                                                                                                                                                                   |
 
 ### A typical run
 
@@ -130,7 +130,7 @@ flowchart LR
 | **SMS send** to +45       | ⚠️ via Infobip trial test sender (`ServiceSMS`), 15 msgs, only to the verified number | ✅ real, branded **"Norlys"** sender after a one-time carrier registration |
 | **SMS receive** (replies) | ❌ trial test sender is send-only → use the dashboard _simulate reply_ (§6)           | ✅ real, with a two-way number + Event Grid                                |
 
-**Why the demo is limited:** the sandbox subscription blocks both _buying a number_ and _enabling an alphanumeric sender_. That is a tenant policy on the Microsoft demo sub — **not** a product limitation. A Norlys EA / Pay-as-you-go subscription is the intended target, but its policy and carrier eligibility still need to be confirmed.
+**Why the demo is limited:** the sandbox subscription blocks both _buying a number_ and _enabling an alphanumeric sender_. That is **subscription eligibility** on the Microsoft demo sub — **not** a product limitation. Danish mobile numbers with two-way SMS are **generally available** in ACS (see §3). A Norlys EA / Pay-as-you-go subscription with a Danish billing address is the intended target.
 
 ---
 
@@ -138,19 +138,43 @@ flowchart LR
 
 Both use the **standard ACS SMS API** — only the sender differs. Pick one.
 
-### Option A — Native ACS SMS (recommended for a Danish-only rollout)
+### Option A — Native ACS SMS (recommended — this is the GA path)
+
+**Denmark capability matrix** ([official source](https://learn.microsoft.com/en-us/azure/communication-services/concepts/numbers/phone-number-management-for-denmark) — re-read it before quoting, it changes):
+
+| DK number type         | Send SMS | Receive SMS | Make calls | Receive calls |
+| ---------------------- | -------- | ----------- | ---------- | ------------- |
+| Toll-Free              | –        | –           | GA         | GA            |
+| Local (geographic)     | –        | –           | GA         | GA            |
+| **Mobile**             | **GA**   | **GA**      | –          | –             |
+| Alphanumeric Sender ID | GA       | –           | –          | –             |
+
+> **The #1 trap:** Danish toll-free and local numbers are **voice-only**. Only the `Mobile` type carries SMS in Denmark. Searching toll-free/local, seeing no SMS option and concluding "Azure can't do SMS in Denmark" is the most common wrong turn.
+
+**Eligibility gates** — all three must pass, or the number type is simply hidden from search:
+
+- **Agreement type:** Modern Customer Agreement (Field/Customer Led), Modern Partner Agreement (CSP), Enterprise Agreement, or Pay-As-You-Go. Anything else is case-by-case via a ticket at <https://pstnsd.powerappsportals.com/>.
+- **Billing location** (two different allow-lists — don't conflate them):
+  - DK numbers generally: AU, CA, DK, FR, DE, IE, IT, JP, NL, ES, SE, UK, US
+  - **DK mobile (narrower):** AU, BE, DK, FI, IE, LV, NL, PL, SE, UK, US → DE/FR/IT/ES/CA/JP can buy a DK toll-free but **not** a DK mobile.
+  - DK alphanumeric sender ID: AU, AT, DK, FR, DE, IN, IE, IT, NL, PL, PT, PR, ES, SE, CH, UK, US
+- **Payment:** Azure Prepayment (Monetary Commitment) funds and prepaid credits **cannot** buy numbers.
+
+**Steps:**
 
 1. In the Norlys ACS resource → **Phone numbers / Alphanumeric Sender ID**.
-2. Register a **Danish alphanumeric sender "Norlys"** (one-way, for notifications/OTP) **or** buy a **Danish mobile/long number** (two-way).
+2. Buy a **Danish mobile number** (two-way SMS) **or** register a **Danish alphanumeric sender "Norlys"** (one-way, for notifications/OTP).
    - Danish sender registration via the carrier takes **a few business days** (regulatory, one-time).
 3. Set config on the caller-agent:
    - `AcsSmsNumber` = the DK number (two-way), **or**
    - `Acs:SmsSenderId` = `Norlys` (alphanumeric, one-way).
 4. For **inbound replies** (two-way number only): run `scripts/setup-eventgrid.ps1` to subscribe _SMS Received_ → `/api/events/sms`.
 
-### Option B — ACS Messaging Connect (Infobip) — fastest multi-country
+### Option B — ACS Messaging Connect (Infobip) — multi-country fallback
 
-Same ACS SDK; ACS routes delivery to Infobip. **No subscription restriction — works on any sub.**
+Same ACS SDK; ACS routes delivery to Infobip. **No subscription restriction — works on any sub.** Use this when Option A is blocked (ineligible agreement/billing location) or when you need countries ACS doesn't serve natively.
+
+> **Public preview:** no SLA, and Microsoft's guidance is not to use it for production workloads. .NET and JavaScript SDKs only — Python and Java are "coming soon". Its _Dynamic_ Alphanumeric Sender ID is offered only in countries ACS doesn't natively support, so for Denmark the MC options are a long code (VLN) or a partner-managed pre-registered alpha.
 
 1. Create an **Infobip** account, then in the Azure portal ACS resource open the **Messaging Connect** blade → choose Infobip (or, from Infobip: _Exchange → SMS for Microsoft Azure Communication Services_ → add your ACS **immutable resource ID**).
 2. In Infobip, provision the sender (branded **"Norlys"** for Denmark needs Infobip's DK registration, ~6 days; a test sender works instantly for trials).
@@ -506,7 +530,7 @@ The one step that can't be scripted: sender **registration** (alphanumeric via e
 
 - [ ] Deploy to a Norlys **EA / Pay-as-you-go** subscription (not a sandbox).
 - [ ] `azd env set PHONE_COUNTRY DK` + `azd env set ACS_DATA_LOCATION Europe` **before first `azd up`** → it buys the DK **voice** number (data location is immutable).
-- [ ] Two-way DK SMS: buy the DK **mobile** number on the EA (Danish billing address required; azd up attempts it) — or use **Messaging Connect** (§3).
+- [ ] Two-way DK SMS: buy the DK **mobile** number on the EA (azd up attempts it). Confirm the sub's **billing location** is in the DK-mobile allow-list (AU, BE, DK, FI, IE, LV, NL, PL, SE, UK, US) and the agreement is MCA/CSP/EA/PAYG — otherwise the type won't even appear in search. Fall back to **Messaging Connect** (§3) only if those gates fail.
 - [ ] Email: verify **`norlys.dk`** for outbound ACS delivery; for replies, set `GRAPH_SENDER_ADDRESS`, grant Graph permissions and scope those permissions to the outreach mailbox (§4).
 - [ ] Inbound voice/SMS: confirm the Event Grid subscriptions exist (`scripts/setup-eventgrid.ps1`). Email replies use Graph, not Event Grid.
 - [ ] Leave `MessagingConnect:*` empty to use **native ACS** instead of the partner route.

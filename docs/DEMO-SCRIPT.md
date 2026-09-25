@@ -2,9 +2,9 @@
 
 Live 2026-07-30. Everything below has been executed end to end, not just implemented.
 
-| | URL |
-| --- | --- |
-| Dashboard | https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/ |
+|               | URL                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------- |
+| Dashboard     | https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/      |
 | Service / MCP | https://ca-caller-agent.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/mcp |
 
 ---
@@ -51,9 +51,9 @@ Show the mail landing in the inbox. Sender reads **Norlys Kundeservice**.
 
 ## 3. The customer replies — the AI answers in the thread
 
-Reply naturally, e.g. *"Ja, min adresse er Hovedgaden 12."*
+Reply naturally, e.g. _"Ja, min adresse er Hovedgaden 12."_
 
-Within ~30s the agent replies asking for the postcode. Then reply *"8000 Aarhus C"* and it
+Within ~30s the agent replies asking for the postcode. Then reply _"8000 Aarhus C"_ and it
 confirms the **full** address — proving it carried context across turns.
 
 > "The whole thread is the session. Every reply replays the conversation, so it never loses
@@ -101,34 +101,38 @@ azd up
 ## Say this before they ask
 
 - **SMS to Danish numbers** — the service sends SMS today, but a US toll-free can't deliver to
-  +45; that's carrier regulation, not Azure. Production path is **Messaging Connect** (ACS's own
-  partner route via Infobip) for two-way, or a branded alphanumeric sender for outbound-only.
-  Same ACS API either way, so it's config, not code.
+  +45; that's carrier regulation, not Azure. Production path is a **Danish mobile number**, which
+  is **GA in ACS with two-way SMS** — the catch is that Danish toll-free and local numbers are
+  voice-only, so only the `Mobile` type carries SMS there. Requires an eligible agreement (MCA,
+  CSP, EA, PAYG) and a billing address in the DK-mobile allow-list. **Messaging Connect** (ACS's
+  partner route via Infobip) is the fallback if that isn't available, and a branded alphanumeric
+  sender covers outbound-only. Same ACS API in every case, so it's config, not code.
 - **Written channels collect, voice converses.** Recommend SMS as a deflection to the AI phone
   line rather than a chat channel — better CX and it plays to the voice agent's strength.
 - **Email deliverability** — the demo tenant is a sandbox with no SPF/DKIM. From `norlys.dk` this
   is ordinary corporate mail.
-- **Preview components** — Messaging Connect is in public preview.
+- **Preview components** — Messaging Connect is in public preview (no SLA; Microsoft's guidance is
+  not to use it for production workloads). Native Danish mobile numbers are GA.
 
 ---
 
 ## If something breaks
 
-| Symptom | Cause / fix |
-| --- | --- |
-| Dashboard sessions empty | Something restarted the container (in-memory store). Re-send one; don't panic. |
-| Email doesn't arrive | Check Junk. Graph reports success even when Exchange drops it — ACS delivery is what we rely on. |
-| Reply not threaded | Poller runs every 30s. Give it a minute before touching anything. |
-| Call doesn't ring | Check `AcsPhoneNumber` is E.164 and the number isn't in use by another call. |
-| Sender shows `donotreply` | An `azd provision` ran without a following `azd deploy` — the placeholder image is serving. |
+| Symptom                   | Cause / fix                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------ |
+| Dashboard sessions empty  | Something restarted the container (in-memory store). Re-send one; don't panic.                   |
+| Email doesn't arrive      | Check Junk. Graph reports success even when Exchange drops it — ACS delivery is what we rely on. |
+| Reply not threaded        | Poller runs every 30s. Give it a minute before touching anything.                                |
+| Call doesn't ring         | Check `AcsPhoneNumber` is E.164 and the number isn't in use by another call.                     |
+| Sender shows `donotreply` | An `azd provision` ran without a following `azd deploy` — the placeholder image is serving.      |
 
 ---
 
 ## Numbers
 
-| | |
-| --- | --- |
-| Voice (US toll-free, reaches +45) | +1 833 256 2495 |
-| Danish voice number (purchased, not yet wired) | +45 88 74 30 91 |
-| Email sender | `kundeservice@<managed-domain>.azurecomm.net` |
-| Replies land in | `admin@mngenvmcap566671.onmicrosoft.com` |
+|                                                |                                               |
+| ---------------------------------------------- | --------------------------------------------- |
+| Voice (US toll-free, reaches +45)              | +1 833 256 2495                               |
+| Danish voice number (purchased, not yet wired) | +45 88 74 30 91                               |
+| Email sender                                   | `kundeservice@<managed-domain>.azurecomm.net` |
+| Replies land in                                | `admin@mngenvmcap566671.onmicrosoft.com`      |
