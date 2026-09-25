@@ -112,6 +112,42 @@ Daily end-of-day voice debrief. Run every workday at 16:00.
    For "open" with priority "today": warn me that it is still not solved and say what is missing.
 ```
 
+### FINAL: Cowork scheduled task for the stage (press "Run now" live)
+
+Create this scheduled task in Cowork before going on stage. Name: "Intelligent Commute Agent". Schedule: every workday at 07:30 and 16:00. On stage, open the task and press "Run now". Iben's phone (+45 30300857) rings within about 30 seconds.
+
+```text
+Intelligent Commute Agent: my morning and evening drive briefing.
+
+Context: I am Iben, a CSAM at Microsoft. I drive about 40 minutes each way, so 80 minutes a day where I cannot type. Use that time: call me, let me answer my follow-ups by voice, then do the work for me.
+This is a live demo. Use only the fictional example on the page. Do not open my real mailbox, chats, ESXP or support tickets.
+
+1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=30300857 in my browser.
+2. Check the page before calling:
+   - Country code is 45, phone number is 30300857, language is Danish.
+   - "Since last night" shows three items.
+   - "Today's plan" shows five tasks: three Today (the first marked Urgent) and two Can wait.
+   If anything is wrong, click "Load example" and check again. Then click "Call me".
+3. Tell me in one line: "Calling you now. Drive safely." Keep this page open while I take the call.
+4. Wait until #cowork-page has data-call-done="true" (check every 30 seconds, max 15 minutes).
+5. Read [data-testid=result-json].
+   - If "verified" is false: stop, and tell me the security check failed. Do nothing else.
+   - Otherwise show me:
+     a) one headline: "N of M solved" from the page,
+     b) a table of actions[]: type, target, priority, status, content,
+     c) a three-line summary of the call.
+6. Do the work, as drafts only:
+   - escalate_ticket: draft the escalation to the support duty manager and the reply to the customer.
+   - create_request: fill in the request text with scope, effort and deadline.
+   - book_resource: draft the booking to the CSA and the confirmation to the customer.
+   - reply_email / reply_teams: draft the reply to the target.
+   - status_update with status "ready": write it as an engagement note.
+   - postponed: put it on tomorrow morning's call list.
+   - open with priority today: warn me it is still not solved and say what is missing.
+7. End with: "Everything is drafted. Say yes and I will send it." Never send or submit anything before I say yes.
+```
+
+What Iben says on the call (in Danish, speaker on, as if driving): security "x y z en to tre", then "Birkedal Foods og Stormkyst"; then the answers in the table above for tasks 1 to 5; then the quick update "Birkedal Foods har bekræftet workshoppen den 1. oktober"; then "nej, det var det". Expected on screen: "5 of 6 solved" and Cowork's drafts.
 ### Stage script: set it up as a Cowork scheduled task, then run it now (wow version)
 
 Iben pastes step 1 into Cowork on the TV. Cowork explains scheduled tasks and asks a few questions; she answers with the short lines in step 2, then says "run it now" and takes the phone call live.
@@ -130,7 +166,7 @@ Step 2, Iben's answers to Cowork's questions (say or type them, one per question
 
 - What should it do? "Brief me on what happened since last night, then call me and go through my follow-ups: support tickets, requests, CSA bookings and customer questions."
 - When should it run? "Every workday at 7:30, when I start the car. And once more at 16:00 on the way home."
-- Where does it call me? "Use my Intelligent Commute Agent page: https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=21858353. Danish."
+- Where does it call me? "Use my Intelligent Commute Agent page: https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=30300857. Danish."
 - What should it do after the call? "Wait until the page says the call is done. Show me the actions and how many are solved. Draft the replies, the request, the booking and the escalation. Never send anything before I say yes."
 - Anything it must not do? "No real customer data in this demo, and never send or submit without my approval."
 
@@ -152,7 +188,7 @@ Line for the room while it rings: "80 minutes of productivity, added to my daily
 ```text
 End-of-day debrief (demo). Use only fictional data; do not open my real mailbox or real reports.
 
-1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=21858353 in my browser.
+1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=30300857 in my browser.
 2. Check that "Since last night" shows three items and "Today's plan" shows three Today items (the first Urgent) and two Can wait items, then click "Call me".
 3. Reopen the page with ?call=<contextId> every minute until #cowork-page has data-call-done="true".
 4. Read [data-testid=result-json] and show me a table of actions[] (type, target, priority, status, content)
