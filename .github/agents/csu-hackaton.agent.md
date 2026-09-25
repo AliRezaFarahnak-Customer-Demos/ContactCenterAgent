@@ -58,13 +58,13 @@ The case summary receives these instructions too, so `actions[]` contains one en
 
 The persona is Iben (CSAM, driving). Customers and other people are fictional; never show real customers on stage. The built-in example (`EXAMPLE_PLAN` in `cowork.vue`) has:
 
-- Security: alias `xyz123`; upcoming engagements Carlsberg (AI agents workshop, 1 October) and LEGO (AI hackathon, 8 October).
-- Since last night (no overlap with the tasks): LEGO sent the hackathon attendee list (12 people); Carlsberg said thanks for last week's Copilot rollout.
+- Security: alias `xyz123`; upcoming engagements Fabrikam Brewing (AI agents workshop, 1 October) and Tailspin Toys (AI hackathon, 8 October).
+- Since last night (no overlap with the tasks): Tailspin Toys sent the hackathon attendee list (12 people); Fabrikam Brewing said thanks for last week's Copilot rollout.
 - Must answer today (Iben's real kinds of request, with fictional customers and details):
-  1. URGENT: a stalled support ticket for Maersk (stand-in for PFA), six days without movement. Raise the priority or escalate to the duty manager?
-  2. Confirm whether a CSA is free on 14 October for a workshop at Novo Nordisk (stand-in for AP Pension). Cowork found Mike Jones (morning) and Laura Smith (all day).
+  1. URGENT: a stalled support ticket for Northwind Shipping (stand-in for PFA), six days without movement. Raise the priority or escalate to the duty manager?
+  2. Confirm whether a CSA is free on 14 October for a workshop at Contoso Pharma (stand-in for AP Pension). Cowork found Mike Jones (morning) and Laura Smith (all day).
 - Can wait:
-  3. Where is Maersk on Security Copilot? Pilot with 20 users since August; the security review is missing.
+  3. Where is Northwind Shipping on Security Copilot? Pilot with 20 users since August; the security review is missing.
 
 Fictional answers Iben gives on the call (driving), and what Cowork does with them afterwards:
 
@@ -73,9 +73,9 @@ Fictional answers Iben gives on the call (driving), and what Cowork does with th
 | 1 | "Escalate it to the duty manager, it is blocking their go-live. Tell the customer they get an update by tomorrow noon." | `escalate_ticket`, ready | Drafts the escalation to the support duty manager and a reply to the customer. |
 | 2 | "Book Laura for the whole day, and tell the customer she is confirmed." | `book_resource`, ready | Sends Laura the booking and drafts the confirmation to the customer. |
 | 3 | "Another day." | `status_update`, postponed | Adds it to tomorrow's call. |
-| + | Quick update: "Carlsberg confirmed the workshop on the 1st of October." | `status_update`, ready (extra) | Writes it into the engagement notes. |
+| + | Quick update: "Fabrikam Brewing confirmed the workshop on the 1st of October." | `status_update`, ready (extra) | Writes it into the engagement notes. |
 
-Security answers: "x y z one two three"; "Carlsberg and LEGO". Result: "3 of 4 solved" (one postponed).
+Security answers: "x y z one two three"; "Fabrikam Brewing and Tailspin Toys". Result: "3 of 4 solved" (one postponed).
 ### Cowork prompt (daily scheduled task, ~16:00)
 
 ```text
@@ -150,17 +150,17 @@ The agent keeps every reply to one or two short sentences and asks one simple qu
 |---|-----------------|-----------|
 | 1 | "Hi Iben, this is your Intelligent Commute Agent. I have some quick news and three quick tasks. Is now a good time?" | "Yes, go ahead." |
 | 2 | "What is your alias?" | "x, y, z, one, two, three." |
-| 3 | "Can you name two of your upcoming engagements?" | "Carlsberg and LEGO." |
+| 3 | "Can you name two of your upcoming engagements?" | "Fabrikam Brewing and Tailspin Toys." |
 | 4 | "Thanks, you're verified." Then three quick news items. | (listen) |
-| 5 | Task 1, urgent: the Maersk ticket is stuck for six days. "Shall I escalate it to the duty manager?" | "Yes, escalate it." |
+| 5 | Task 1, urgent: the Northwind Shipping ticket is stuck for six days. "Shall I escalate it to the duty manager?" | "Yes, escalate it." |
 | 6 | Drafts a one-sentence email to the customer. "Shall I send it?" | "Yes, send it." |
-| 7 | Task 2: the Novo Nordisk workshop on the 14th of October needs a CSA. "Shall I book Laura?" | "Yes, book Laura." |
+| 7 | Task 2: the Contoso Pharma workshop on the 14th of October needs a CSA. "Shall I book Laura?" | "Yes, book Laura." |
 | 8 | Drafts a one-sentence Teams message to the customer. "Shall I send it?" | "Yes, send it." |
-| 9 | Task 3: the Maersk Security Copilot pilot. "What is the status?" | "I don't know yet." |
+| 9 | Task 3: the Northwind Shipping Security Copilot pilot. "What is the status?" | "I don't know yet." |
 | 10 | "No problem, I'll follow up with you tomorrow on the daily call." "Anything else for today?" | "No, that's all." |
 | 11 | One-sentence summary. "Safe drive, Iben. Bye." Hangs up. | "Bye." |
 
-Expected on the page afterwards: "2 of 3 solved". Ready: escalate_ticket plus the customer email (Maersk), book_resource plus the Teams message (Novo Nordisk). Postponed: the Maersk Security Copilot status.
+Expected on the page afterwards: "2 of 3 solved". Ready: escalate_ticket plus the customer email (Northwind Shipping), book_resource plus the Teams message (Contoso Pharma). Postponed: the Northwind Shipping Security Copilot status.
 
 If the agent mishears: say the answer again, a little slower. Say the alias one character at a time.
 

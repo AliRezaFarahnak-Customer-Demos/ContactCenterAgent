@@ -209,39 +209,39 @@ const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
   da: {
     hook: " Jeg har kort nyt og tre hurtige opgaver.",
     today: [
-      "HASTER. Supportsagen for Maersk har stået stille i seks dage. Spørg: \"Skal jeg eskalere den til vagthavende?\" Tilbyd derefter en mail til kunden om at sagen er eskaleret.",
-      "Workshoppen hos Novo Nordisk den 14. oktober mangler en CSA. Laura Smith er ledig hele dagen, Mike Jones kun om formiddagen. Spørg: \"Skal jeg booke Laura?\" Tilbyd derefter en Teams-besked til kunden om at bookingen er bekræftet.",
+      "HASTER. Supportsagen for Northwind Shipping har stået stille i seks dage. Spørg: \"Skal jeg eskalere den til vagthavende?\" Tilbyd derefter en mail til kunden om at sagen er eskaleret.",
+      "Workshoppen hos Contoso Pharma den 14. oktober mangler en CSA. Laura Smith er ledig hele dagen, Mike Jones kun om formiddagen. Spørg: \"Skal jeg booke Laura?\" Tilbyd derefter en Teams-besked til kunden om at bookingen er bekræftet.",
     ],
     later: [
-      "Security Copilot-piloten hos Maersk mangler stadig sikkerhedsgennemgangen. Spørg: \"Hvad er status?\" Tilbyd derefter en Teams-besked til kundeteamet med status.",
+      "Security Copilot-piloten hos Northwind Shipping mangler stadig sikkerhedsgennemgangen. Spørg: \"Hvad er status?\" Tilbyd derefter en Teams-besked til kundeteamet med status.",
     ],
     news: [
-      "LEGO har sendt deltagerlisten til hackathonet, tolv personer.",
-      "Carlsberg takkede for sidste uges Copilot-udrulning.",
+      "Tailspin Toys har sendt deltagerlisten til hackathonet, tolv personer.",
+      "Fabrikam Brewing takkede for sidste uges Copilot-udrulning.",
     ],
     alias: "xyz123, udtales x, y, z, et, to, tre",
     engagements: [
-      "Carlsberg, workshop om AI-agenter den 1. oktober",
-      "LEGO, AI-hackathon den 8. oktober",
+      "Fabrikam Brewing, workshop om AI-agenter den 1. oktober",
+      "Tailspin Toys, AI-hackathon den 8. oktober",
     ],
   },
   en: {
     hook: " I have some quick news and three quick tasks.",
     today: [
-      "URGENT. The Maersk support ticket has been stuck for six days. Ask: \"Shall I escalate it to the duty manager?\" Then offer an email to the customer saying it is escalated.",
-      "The Novo Nordisk workshop on the 14th of October needs a CSA. Laura Smith is free all day, Mike Jones only in the morning. Ask: \"Shall I book Laura?\" Then offer a Teams message to the customer confirming the booking.",
+      "URGENT. The Northwind Shipping support ticket has been stuck for six days. Ask: \"Shall I escalate it to the duty manager?\" Then offer an email to the customer saying it is escalated.",
+      "The Contoso Pharma workshop on the 14th of October needs a CSA. Laura Smith is free all day, Mike Jones only in the morning. Ask: \"Shall I book Laura?\" Then offer a Teams message to the customer confirming the booking.",
     ],
     later: [
-      "The Maersk Security Copilot pilot is still missing its security review. Ask: \"What is the status?\" Then offer a Teams message to the account team with the status.",
+      "The Northwind Shipping Security Copilot pilot is still missing its security review. Ask: \"What is the status?\" Then offer a Teams message to the account team with the status.",
     ],
     news: [
-      "LEGO sent the hackathon attendee list, twelve people.",
-      "Carlsberg said thanks for last week's Copilot rollout.",
+      "Tailspin Toys sent the hackathon attendee list, twelve people.",
+      "Fabrikam Brewing said thanks for last week's Copilot rollout.",
     ],
     alias: "xyz123, spoken as x, y, z, one, two, three",
     engagements: [
-      "Carlsberg, AI agents workshop on the 1st of October",
-      "LEGO, AI hackathon on the 8th of October",
+      "Fabrikam Brewing, AI agents workshop on the 1st of October",
+      "Tailspin Toys, AI hackathon on the 8th of October",
     ],
   },
 };
@@ -579,11 +579,11 @@ const field =
 
     <main class="max-w-[1800px] mx-auto px-10 py-10 space-y-8">
       <div>
-        <h1 class="text-7xl font-extrabold tracking-tight text-left leading-tight">
+        <h1 class="text-5xl font-extrabold tracking-tight text-left leading-tight">
           Enable <span class="text-blue-600">80 minutes</span> of productivity<br />
           for every CSAM and CSA.
         </h1>
-        <p class="text-3xl font-semibold text-slate-600 mt-5">
+        <p class="text-2xl font-semibold text-slate-600 mt-3">
           Answer your follow-ups by voice while you drive. Cowork does the rest.
         </p>
       </div>
