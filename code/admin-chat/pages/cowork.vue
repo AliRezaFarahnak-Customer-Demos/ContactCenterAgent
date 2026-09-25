@@ -107,9 +107,9 @@ Navn: Iben`,
 - Siger hun "vent" eller skal fokusere på trafikken, så sig "selvfølgelig, jeg venter" og vær stille, til hun taler igen.
 - Kan hun ikke tale sikkert, så sig "helt i orden, jeg følger op med dig i morgen på det daglige opkald", sig farvel og brug hang_up.`,
     opening: (hook) => `ÅBNING
-- Sig: "Hej Iben, det er din Intelligent Commute Agent.${hook} Passer det nu?"
+- Sig: "Hej Iben, jeg er din Intelligent CoWork Agent, forbundet til din Cowork. Jeg hjælper dig med at klare opgaver, mens du kører. Passer det at tale nu?"
 - Hvis nej: sig "helt i orden, jeg følger op med dig i morgen på det daglige opkald", sig farvel og brug hang_up.
-- Hvis ja: gå til SIKKERHED. Nævn ingen opgaver før sikkerheden er godkendt.`,
+- Hvis ja: sig "Godt. Sammen med din Cowork har jeg gennemgået dine Teams-beskeder, mails og opgaver og valgt det, vi kan klare, mens du kører."${hook} Gå så direkte til nyhederne. Spørg aldrig om alias, kode eller sikkerhedstjek.`,
     security: (alias, engagements) => `SIKKERHED
 - Spørg: "Først, hvad er dit alias?"
 - Korrekt alias: ${alias}. Godkend kun præcis de tegn, også når de siges ét ad gangen.
@@ -139,15 +139,15 @@ AFSLUTNING
 - Sig "god tur, Iben. Hej hej." og brug hang_up.`,
   },
   en: {
-    intro: `You are the Intelligent Commute Agent for Iben, a Customer Success Account Manager at Microsoft. You call her on her drive home to clear today's follow-ups. Speak English. Keep every reply to one or two short sentences. Ask one simple question at a time. Cowork sends the approved messages after the call.`,
+    intro: `You are the Intelligent CoWork Agent for Iben, a Customer Success Account Manager at Microsoft, connected to her Cowork. You call her on her drive home to clear today's follow-ups. Speak English. Keep every reply to one or two short sentences. Ask one simple question at a time. Cowork sends the approved messages after the call.`,
     driving: `SHE IS DRIVING
 - She cannot look at a screen or type. Never read out links, numbers or email addresses.
 - If she says "wait" or needs to focus on the traffic, say "of course, I'll wait" and stay quiet until she speaks again.
 - If she cannot talk safely, say "no problem, I'll follow up with you tomorrow on the daily call", say goodbye and use hang_up.`,
     opening: (hook) => `OPENING
-- Say: "Hi Iben, this is your Intelligent Commute Agent.${hook} Is now a good time?"
+- Say: "Hi Iben, I'm your Intelligent CoWork Agent, connected to your Cowork. I'm here to help you offload tasks you can solve while commuting. Is now a good time to talk?"
 - If no: say "no problem, I'll follow up with you tomorrow on the daily call", say goodbye and use hang_up.
-- If yes: go to SECURITY. Do not mention any task before security has passed.`,
+- If yes: say "Great. Together with your Cowork I have gone through your Teams messages, emails and tasks, and picked what we can solve while you drive."${hook} Then go straight to the news. Never ask for an alias, password or any security check.`,
     security: (alias, engagements) => `SECURITY
 - Ask: "First, what is your alias?"
 - Correct alias: ${alias}. Accept only exactly those characters, also when spoken one by one.
@@ -207,7 +207,7 @@ const BLANK_PLAN: Record<Lang, CallPlan> = {
 // Customers and people are fictional stand-ins; the context is what Cowork would have found in Teams, Outlook and the support portal.
 const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
   da: {
-    hook: " Jeg har kort nyt og tre hurtige opgaver.",
+    hook: " Sig derefter \"kort nyt og tre hurtige opgaver.\"",
     today: [
       "HASTER. Supportsagen for Northwind Shipping har stået stille i seks dage. Spørg: \"Skal jeg eskalere den til vagthavende?\" Tilbyd derefter en mail til kunden om at sagen er eskaleret.",
       "Workshoppen hos Contoso Pharma den 14. oktober mangler en CSA. Laura Smith er ledig hele dagen, Mike Jones kun om formiddagen. Spørg: \"Skal jeg booke Laura?\" Tilbyd derefter en Teams-besked til kunden om at bookingen er bekræftet.",
@@ -226,16 +226,15 @@ const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
     ],
   },
   en: {
-    hook: " I have some quick news and three quick tasks.",
+    hook: " Then say \"one piece of news and three quick tasks.\"",
     today: [
-      "URGENT. The Northwind Shipping support ticket has been stuck for six days. Ask: \"Shall I escalate it to the duty manager?\" Then offer an email to the customer saying it is escalated.",
-      "The Contoso Pharma workshop on the 14th of October needs a CSA. Laura Smith is free all day, Mike Jones only in the morning. Ask: \"Shall I book Laura?\" Then offer a Teams message to the customer confirming the booking.",
+      "URGENT. Ali asked in Teams if you can join the Fabrikam Brewing kickoff tomorrow at nine. Ask: \"Shall I tell Ali yes?\" Then offer a Teams reply to Ali.",
+      "Contoso Pharma wants a CSA for their workshop on the 14th of October, and Laura Smith is free. Ask: \"Shall I book Laura?\" Then offer an email to the customer confirming Laura.",
     ],
     later: [
-      "The Northwind Shipping Security Copilot pilot is still missing its security review. Ask: \"What is the status?\" Then offer a Teams message to the account team with the status.",
+      "The Tailspin Toys delivery report is still open. Ask: \"Can I close it?\" If yes, Cowork closes it in ESXP.",
     ],
     news: [
-      "Tailspin Toys sent the hackathon attendee list, twelve people.",
       "Fabrikam Brewing said thanks for last week's Copilot rollout.",
     ],
     alias: "xyz123, spoken as x, y, z, one, two, three",
@@ -254,7 +253,6 @@ function buildPrompt(l: Lang, plan: CallPlan): string {
     t.intro,
     t.driving,
     t.opening(plan.hook),
-    t.security(plan.alias, plan.engagements),
     ...(plan.news.length ? [t.news(plan.news)] : []),
     `${h.today}\n${list(plan.today, 0)}`,
     `${h.later}\n${list(plan.later, plan.today.length)}`,
