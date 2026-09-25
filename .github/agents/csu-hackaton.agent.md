@@ -148,6 +148,31 @@ This is a live demo. Use only the fictional example on the page. Do not open my 
 ```
 
 What Iben says on the call (in Danish, speaker on, as if driving): security "x y z en to tre", then "Birkedal Foods og Stormkyst"; then the answers in the table above for tasks 1 to 5; then the quick update "Birkedal Foods har bekræftet workshoppen den 1. oktober"; then "nej, det var det". Expected on screen: "5 of 6 solved" and Cowork's drafts.
+### Call script for Iben (Danish, about 4 minutes)
+
+Speaker on, phone in hand as if it sits in the car holder. The agent's lines are approximate; Iben's lines are what she says. Speak calmly, short sentences, and wait for the agent to finish before answering.
+
+| # | Agent (roughly) | Iben says |
+|---|-----------------|-----------|
+| 1 | "Hej Iben, det er din assistent med dagens opfølgning. Jeg har lidt nyt fra i aftes og fem opgaver. Tre skal svares i dag, og den første haster. Har du fem minutter?" | "Ja, jeg sidder i bilen. Kør bare." |
+| 2 | "Godt. Først to sikkerhedsspørgsmål. Hvad er dit alias?" | "x, y, z, et, to, tre." |
+| 3 | "Kan du nævne to af dine kommende engagementer?" | "Birkedal Foods og Stormkyst Forsikring." |
+| 4 | News: Havnestad wrote again last night, Stormkyst sent the attendee list with twelve people, Solbakke shared its architecture diagram. "Så til dagens opgaver." | (listen, say nothing) |
+| 5 | Task 1, urgent: the Havnestad Pension ticket has stood still for six days. Raise priority or escalate, and what should the customer be told? | "Eskalér den til vagthavende. Den blokerer deres go-live. Sig til kunden, at de får en opdatering i morgen klokken tolv." |
+| 6 | Repeats back and asks if that is right. | "Ja, præcis." |
+| 7 | Task 2: create a request for Solbakke Pension, landing zone review. What should it contain, what help, and when? | "En gennemgang af landingszonen, to dages hjælp fra en CSA, og den skal være færdig før den 15. november." |
+| 8 | Task 3: CSA on 14 October. Mikkel Dahl in the morning or Laura Kjær all day? | "Book Laura hele dagen, og sig til kunden, at hun er bekræftet." |
+| 9 | Task 4 (can wait): Azure DevOps resource for the developer at Solbakke. Now or another day? | "Lad os tage den nu. Kobl ham på Anna Berg." |
+| 10 | Task 5 (can wait): Havnestad Pension and Security Copilot. Now or another day? | "Den tager vi en anden dag." |
+| 11 | "Har du andre hurtige opdateringer eller resultater fra dagens engagementer?" | "Ja. Birkedal Foods har bekræftet workshoppen den 1. oktober." |
+| 12 | "Andet?" | "Nej, det var det." |
+| 13 | Summary: four solved plus one extra update, one postponed. Cowork does the rest, approve when you arrive. Good trip, hangs up. | "Tak, hej hej." |
+
+Optional wow moment, between steps 7 and 8: Iben says "Vent lige, jeg skal ind i en rundkørsel." The agent answers "selvfølgelig, jeg venter" and goes quiet. After a few seconds she says "Okay, jeg er her igen", and the agent picks up where it left off. This shows it is built for driving.
+
+If the agent mishears: just say the answer again, a little slower. If it asks to confirm something wrong: "Nej, det er ..." and the right answer. Do not say the alias letters as one word.
+
+Expected on the TV afterwards: "5 of 6 solved". Solved: escalate_ticket (Havnestad), create_request and book_resource (Solbakke), reply_email (Anna Berg), and the Birkedal Foods status_update. Postponed: the Havnestad Security Copilot status_update.
 ### Stage script: set it up as a Cowork scheduled task, then run it now (wow version)
 
 Iben pastes step 1 into Cowork on the TV. Cowork explains scheduled tasks and asks a few questions; she answers with the short lines in step 2, then says "run it now" and takes the phone call live.
