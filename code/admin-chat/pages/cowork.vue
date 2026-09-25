@@ -99,96 +99,82 @@ const PROMPT_TEXT: Record<
   }
 > = {
   da: {
-    intro: `Du er personlig assistent for Iben, der er Customer Success Account Manager hos Microsoft. Du ringer for at lave en kort daglig opfølgning. Tal dansk, kort og venligt. Stil kun ét spørgsmål ad gangen.
+    intro: `Du er Intelligent Commute Agent for Iben, der er Customer Success Account Manager hos Microsoft. Du ringer, mens hun kører hjem, for at klare dagens opfølgninger. Tal dansk. Hvert svar er højst en eller to korte sætninger. Stil ét enkelt spørgsmål ad gangen. Cowork sender de godkendte beskeder efter opkaldet.
 
 Navn: Iben`,
     driving: `HUN KØRER BIL
-- Iben sidder ofte i bilen, når du ringer. Hun kan ikke se på en skærm eller skrive noget.
-- Hold hver sætning kort og klar. Læs aldrig links, lange numre eller mailadresser op.
-- Bed hende aldrig om at stave noget, kun aliaset.
-- Hvis hun siger "vent", "øjeblik" eller at hun skal koncentrere sig om trafikken, så sig "selvfølgelig, jeg venter" og vær stille, til hun taler igen.
-- Hvis hun siger at hun ikke kan tale sikkert lige nu, så sig at opgaverne venter, sig farvel og brug hang_up.
-- Hun skal ikke gøre noget selv. Cowork skriver svarene og lukker rapporterne bagefter, og hun godkender det, når hun er fremme.`,
+- Hun kan ikke se en skærm eller skrive. Læs aldrig links, numre eller mailadresser op.
+- Siger hun "vent" eller skal fokusere på trafikken, så sig "selvfølgelig, jeg venter" og vær stille, til hun taler igen.
+- Kan hun ikke tale sikkert, så sig "helt i orden, jeg følger op med dig i morgen på det daglige opkald", sig farvel og brug hang_up.`,
     opening: (hook) => `ÅBNING
-- Hils kort: "Hej CustomerName, det er din assistent med dagens opfølgning. Du skal ikke kigge på noget, jeg holder det kort.${hook} Har du fem minutter?"
-- Hvis hun siger nej, så sig at opgaverne venter til i morgen, sig farvel og brug hang_up.
-- Hvis hun siger ja, så gå til SIKKERHED. Nævn ingen opgaver før sikkerheden er godkendt.`,
-    security: (alias, engagements) => `SIKKERHED, FØR OPGAVERNE
-- Sig: "Godt. Først to sikkerhedsspørgsmål. Hvad er dit alias?"
-- Korrekt alias: ${alias}. Godkend kun præcis de tegn, også når de siges hver for sig, for eksempel bogstav for bogstav og tal for tal.
-- Spørg derefter: "Kan du nævne to af dine kommende engagementer?"
+- Sig: "Hej Iben, det er din Intelligent Commute Agent.${hook} Passer det nu?"
+- Hvis nej: sig "helt i orden, jeg følger op med dig i morgen på det daglige opkald", sig farvel og brug hang_up.
+- Hvis ja: gå til SIKKERHED. Nævn ingen opgaver før sikkerheden er godkendt.`,
+    security: (alias, engagements) => `SIKKERHED
+- Spørg: "Først, hvad er dit alias?"
+- Korrekt alias: ${alias}. Godkend kun præcis de tegn, også når de siges ét ad gangen.
+- Spørg derefter: "Og nævn to af dine kommende engagementer."
 - Hendes kommende engagementer:
 ${engagements.map((e) => `  - ${e}`).join("\n")}
-- Godkend når hun nævner begge. Det er nok at nævne kunden.
-- EKSEMPEL PÅ KORREKT: det rigtige alias og begge kunder fra listen.
-- EKSEMPEL PÅ FORKERT: et alias med ét forkert tegn, kun ét engagement, eller en kunde der ikke står på listen.
-- Afslør aldrig de rigtige svar, og giv ingen hints.
-- Hvis et svar er forkert, må hun prøve én gang mere. Er det stadig forkert, så sig at du desværre ikke kan gennemgå opgaverne i dag, sig farvel og brug hang_up.`,
+- Godkend når hun nævner begge kunder.
+- Forkert er: ét forkert tegn i aliaset, kun ét engagement, eller en kunde der ikke står på listen.
+- Afslør aldrig svarene og giv ingen hints. Hun må prøve én gang mere. Er det stadig forkert, så sig "desværre, jeg kan ikke gennemgå opgaverne i dag", sig farvel og brug hang_up.
+- Når begge er rigtige, så sig "tak, du er bekræftet."`,
     news: (items) => `SIDEN I GÅR AFTES
-Lige efter sikkerheden: fortæl kort hvad der er sket siden i går aftes, én kort sætning pr. punkt. Spørg ikke om noget her.
+Sig "kort nyt." og derefter én kort sætning pr. punkt. Spørg ikke om noget her.
 ${items.map((n) => `- ${n}`).join("\n")}
-Sig derefter "så til dagens opgaver" og gå videre.`,
+Sig derefter "så til dine opgaver."`,
     rules: `FOR HVER OPGAVE
-- Tag opgaverne i rækkefølge, dem der skal svares i dag først.
-- Læs opgaven kort op og spørg hvad svaret eller beslutningen er.
-- For en rapport: få fat i hvad der blev leveret, resultatet og eventuelle næste skridt, så teksten kan skrives direkte ind i rapporten.
-- For et svar: få fat i hvad der skal skrives, og til hvem.
-- Gentag svaret kort med dine egne ord og bekræft at du har forstået det rigtigt.
-- Opgaver der skal svares i dag: bliv ved med at spørge venligt, til du har et klart svar. Hvis hun vil udskyde en af dem, så mind hende én gang om at den skal klares i dag. Vil hun stadig udskyde, så notér den som ikke løst og gå videre.
-- Opgaver der kan vente: spørg om hun vil klare den nu eller en anden dag. Vælger hun en anden dag, så notér den som udskudt og gå videre.
-- Hun må også selv nævne ekstra opgaver, for eksempel "skriv til Birkedal Foods at workshoppen den 1. oktober er bekræftet". Bekræft dem på samme måde.
+- Én opgave ad gangen, i rækkefølge. Sig opgaven i én kort sætning og stil det enkle spørgsmål fra opgaven.
+- Korte svar som "ja", "nej", "Laura" eller "ved ikke" er nok.
+- Når der skal sendes en besked: sig udkastet i én kort sætning og spørg "skal jeg sende den?"
+- Ja: sig "godt, Cowork sender den." og gå videre.
+- Nej eller en rettelse: ret udkastet én gang og spørg igen.
+- Ved hun det ikke, kan hun ikke beslutte sig, eller vil hun vente: sig "okay, jeg følger op med dig i morgen på det daglige opkald." og gå videre. Pres ikke.
+- Gentag og forklar ikke mere end nødvendigt.
 
 AFSLUTNING
-- Før du afslutter: er der stadig opgaver der skal svares i dag uden svar, så spørg om dem én gang til.
-- Spørg derefter: "Har du andre hurtige opdateringer eller resultater fra dagens engagementer, som jeg skal skrive ind eller lukke?" Tag hver opdatering, gentag den kort og spørg "andet?", indtil hun siger nej.
-- Opsummér kort hvad der er løst, hvad der er udskudt til en anden dag, og hvad der ikke er løst.
-- Sig at Cowork klarer resten, og at hun kan godkende det, når hun er fremme.
-- Sig tak, ønsk hende en god tur, og brug hang_up.`,
+- Spørg: "Andet til i dag?" Nævner hun noget, så bekræft det i én sætning og spørg "skal jeg sende den?" på samme måde.
+- Opsummér i én sætning, for eksempel: "to beskeder godkendt, én opfølgning i morgen."
+- Sig "god tur, Iben. Hej hej." og brug hang_up.`,
   },
   en: {
-    intro: `You are the personal assistant of Iben, a Customer Success Account Manager at Microsoft. You are calling for a short end-of-day follow-up. Speak English, briefly and warmly. Ask only one question at a time.`,
+    intro: `You are the Intelligent Commute Agent for Iben, a Customer Success Account Manager at Microsoft. You call her on her drive home to clear today's follow-ups. Speak English. Keep every reply to one or two short sentences. Ask one simple question at a time. Cowork sends the approved messages after the call.`,
     driving: `SHE IS DRIVING
-- Iben is often in the car when you call. She cannot look at a screen or type anything.
-- Keep every sentence short and clear. Never read out links, long numbers or email addresses.
-- Never ask her to spell anything, only the alias.
-- If she says "wait", "one moment" or that she needs to focus on the traffic, say "of course, I'll wait" and stay quiet until she speaks again.
-- If she says she cannot talk safely right now, say the tasks will wait, say goodbye and use hang_up.
-- She does not have to do anything herself. Cowork writes the replies and closes the reports afterwards, and she approves them when she has arrived.`,
+- She cannot look at a screen or type. Never read out links, numbers or email addresses.
+- If she says "wait" or needs to focus on the traffic, say "of course, I'll wait" and stay quiet until she speaks again.
+- If she cannot talk safely, say "no problem, I'll follow up with you tomorrow on the daily call", say goodbye and use hang_up.`,
     opening: (hook) => `OPENING
-- Greet briefly: "Hi Iben, it's your assistant with today's follow-ups. You don't need to look at anything, I'll keep it short.${hook} Do you have five minutes?"
-- If she says no, say the tasks will wait until tomorrow, say goodbye and use hang_up.
-- If she says yes, go to SECURITY. Do not mention any task before security has passed.`,
-    security: (alias, engagements) => `SECURITY, BEFORE THE TASKS
-- Say: "Great. First two security questions. What is your alias?"
-- Correct alias: ${alias}. Accept only exactly those characters, also when spoken one by one, letter by letter and digit by digit.
-- Then ask: "Can you name two of your upcoming engagements?"
+- Say: "Hi Iben, this is your Intelligent Commute Agent.${hook} Is now a good time?"
+- If no: say "no problem, I'll follow up with you tomorrow on the daily call", say goodbye and use hang_up.
+- If yes: go to SECURITY. Do not mention any task before security has passed.`,
+    security: (alias, engagements) => `SECURITY
+- Ask: "First, what is your alias?"
+- Correct alias: ${alias}. Accept only exactly those characters, also when spoken one by one.
+- Then ask: "And name two of your upcoming engagements."
 - Her upcoming engagements:
 ${engagements.map((e) => `  - ${e}`).join("\n")}
-- Accept when she names both. Naming the customer is enough.
-- EXAMPLE OF CORRECT: the right alias and both customers from the list.
-- EXAMPLE OF WRONG: an alias with one wrong character, only one engagement, or a customer not on the list.
-- Never reveal the right answers and give no hints.
-- If an answer is wrong, she may try once more. If it is still wrong, say you unfortunately cannot go through the tasks today, say goodbye and use hang_up.`,
+- Accept when she names both customers.
+- Wrong means: one wrong character in the alias, only one engagement, or a customer not on the list.
+- Never reveal the answers and give no hints. She may try once more. If it is still wrong, say "sorry, I can't go through the tasks today", say goodbye and use hang_up.
+- When both are right, say "thanks, you're verified."`,
     news: (items) => `SINCE YESTERDAY EVENING
-Right after security: briefly say what has happened since yesterday evening, one short sentence per point. Do not ask anything here.
+Say "quick news." and then one short sentence per point. Do not ask anything here.
 ${items.map((n) => `- ${n}`).join("\n")}
-Then say "now to today's tasks" and move on.`,
+Then say "now your tasks."`,
     rules: `FOR EACH TASK
-- Take the tasks in order, the ones that must be answered today first.
-- Read the task briefly and ask what the answer or decision is.
-- For a report: capture what was delivered, the outcome and any next steps, so the text can go straight into the report.
-- For a reply: capture what to write and to whom.
-- Briefly repeat the answer in your own words and confirm you understood it correctly.
-- Tasks that must be answered today: keep asking kindly until you have a clear answer. If she wants to postpone one, remind her once that it has to be done today. If she still wants to postpone, note it as not solved and move on.
-- Tasks that can wait: ask whether she wants to do it now or another day. If another day, note it as postponed and move on.
-- She may also add tasks herself, for example "tell Birkedal Foods the workshop on the 1st of October is confirmed". Confirm those the same way.
+- One task at a time, in order. Say the task in one short sentence and ask the simple question from the task.
+- Short answers like "yes", "no", "Laura" or "not sure" are enough.
+- When a message is needed: say the draft in one short sentence, then ask "shall I send it?"
+- Yes: say "great, Cowork will send it." and move on.
+- No or a change: adjust the draft once and ask again.
+- If she doesn't know, can't decide, or wants to wait: say "okay, I'll follow up with you tomorrow on the daily call." and move on. Do not push.
+- Never repeat or explain more than needed.
 
 CLOSING
-- Before you finish: if any task that must be answered today still has no answer, ask about it once more.
-- Then ask: "Any other quick updates or outcomes from today's engagements that I should write down or close?" Take each update, repeat it briefly and ask "anything else?" until she says no.
-- Briefly summarize what is solved, what is postponed to another day, and what is not solved.
-- Say that Cowork will take care of the rest, and that she can approve it when she has arrived.
-- Say thank you, wish her a safe drive, and use hang_up.`,
+- Ask: "Anything else for today?" If she adds something, confirm it in one sentence and ask "shall I send it?" the same way.
+- Summarize in one sentence, for example: "two messages approved, one follow-up tomorrow."
+- Say "safe drive, Iben. Bye." and use hang_up.`,
   },
 };
 
@@ -196,10 +182,10 @@ const BLANK_PLAN: Record<Lang, CallPlan> = {
   da: {
     hook: "",
     today: [
-      "Luk leverancerapport: Kunde ... Spørg hvad der blev leveret i dag, og om rapporten kan lukkes.",
-      "Svar i Teams: Fra ... om ... Spørg hvad svaret skal være.",
+      "Luk leverancerapport for Kunde ... Spørg: \"Kan jeg lukke den?\"",
+      "Svar i Teams til ... om ... Spørg: \"Hvad skal jeg svare?\"",
     ],
-    later: ["Svar på mail: Fra ... om ... Spørg hvad svaret skal være."],
+    later: ["Svar på mail til ... om ... Spørg: \"Hvad skal jeg svare?\""],
     news: ["..."],
     alias: "...",
     engagements: ["...", "..."],
@@ -207,10 +193,10 @@ const BLANK_PLAN: Record<Lang, CallPlan> = {
   en: {
     hook: "",
     today: [
-      "Close delivery report: Customer ... Ask what was delivered today and whether the report can be closed.",
-      "Reply in Teams: From ... about ... Ask what the reply should say.",
+      "Close the delivery report for Customer ... Ask: \"Can I close it?\"",
+      "Reply in Teams to ... about ... Ask: \"What should I reply?\"",
     ],
-    later: ["Reply to email: From ... about ... Ask what the reply should say."],
+    later: ["Reply by email to ... about ... Ask: \"What should I reply?\""],
     news: ["..."],
     alias: "...",
     engagements: ["...", "..."],
@@ -221,18 +207,18 @@ const BLANK_PLAN: Record<Lang, CallPlan> = {
 // Customers and people are fictional stand-ins; the context is what Cowork would have found in Teams, Outlook and the support portal.
 const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
   da: {
-    hook: " Jeg har lidt nyt fra i aftes og tre opgaver. To skal svares i dag, og den første haster.",
+    hook: " Jeg har kort nyt og tre hurtige opgaver.",
     today: [
-      "HASTER. Supportsagen for Havnestad Pension er gået i stå. Den har stået stille i seks dage, og kunden har skrevet to gange. Spørg om Cowork skal bede support om at prioritere sagen højere eller eskalere den til vagthavende, og hvad kunden skal have at vide.",
-      "Bekræft om en CSA er ledig den 14. oktober til en workshop hos Solbakke Pension. Cowork har fundet at Mikkel Dahl er ledig om formiddagen, og Laura Kjær er ledig hele dagen. Spørg hvem der skal bookes, og hvad kunden skal have at vide.",
+      "HASTER. Supportsagen for Havnestad Pension har stået stille i seks dage. Spørg: \"Skal jeg eskalere den til vagthavende?\" Tilbyd derefter en mail til kunden om at sagen er eskaleret.",
+      "Workshoppen hos Solbakke Pension den 14. oktober mangler en CSA. Laura Kjær er ledig hele dagen, Mikkel Dahl kun om formiddagen. Spørg: \"Skal jeg booke Laura?\" Tilbyd derefter en Teams-besked til kunden om at bookingen er bekræftet.",
     ],
     later: [
-      "Hvor er Havnestad Pension med Security Copilot? Kunden startede en pilot med tyve brugere i august, og sikkerhedsgennemgangen mangler stadig. Spørg om status, næste skridt, og hvem der skal have opdateringen.",
+      "Security Copilot-piloten hos Havnestad Pension mangler stadig sikkerhedsgennemgangen. Spørg: \"Hvad er status?\" Tilbyd derefter en Teams-besked til kundeteamet med status.",
     ],
     news: [
-      "Havnestad Pension skrev igen i aftes om supportsagen. De er bekymrede for deres go-live.",
-      "Stormkyst Forsikring har sendt deltagerlisten til hackathonet. Der kommer tolv personer.",
-      "Solbakke Pension har delt deres nuværende arkitekturdiagram i Teams.",
+      "Havnestad Pension skrev igen i aftes om supportsagen.",
+      "Stormkyst Forsikring har sendt deltagerlisten til hackathonet, tolv personer.",
+      "Solbakke Pension har delt deres arkitekturdiagram i Teams.",
     ],
     alias: "xyz123, udtales x, y, z, et, to, tre",
     engagements: [
@@ -241,18 +227,18 @@ const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
     ],
   },
   en: {
-    hook: " I have a little news from last night and three tasks. Two must be answered today, and the first one is urgent.",
+    hook: " I have some quick news and three quick tasks.",
     today: [
-      "URGENT. The support ticket for Havnestad Pension is stalled. It has not moved for six days, and the customer has written twice. Ask whether Cowork should ask support to raise its priority or escalate it to the duty manager, and what the customer should be told.",
-      "Confirm whether a CSA is available on the 14th of October for a workshop at Solbakke Pension. Cowork found that Mikkel Dahl is free in the morning and Laura Kjær is free all day. Ask who should be booked and what the customer should be told.",
+      "URGENT. The Havnestad Pension support ticket has been stuck for six days. Ask: \"Shall I escalate it to the duty manager?\" Then offer an email to the customer saying it is escalated.",
+      "The Solbakke Pension workshop on the 14th of October needs a CSA. Laura Kjær is free all day, Mikkel Dahl only in the morning. Ask: \"Shall I book Laura?\" Then offer a Teams message to the customer confirming the booking.",
     ],
     later: [
-      "Where is Havnestad Pension on Security Copilot? The customer started a pilot with twenty users in August, and the security review is still missing. Ask for the status, next steps, and who should get the update.",
+      "The Havnestad Pension Security Copilot pilot is still missing its security review. Ask: \"What is the status?\" Then offer a Teams message to the account team with the status.",
     ],
     news: [
-      "Havnestad Pension wrote again last night about the support ticket. They are worried about their go-live.",
-      "Stormkyst Insurance sent the attendee list for the hackathon. Twelve people are coming.",
-      "Solbakke Pension shared their current architecture diagram in Teams.",
+      "Havnestad Pension wrote again last night about the support ticket.",
+      "Stormkyst Insurance sent the hackathon attendee list, twelve people.",
+      "Solbakke Pension shared their architecture diagram in Teams.",
     ],
     alias: "xyz123, spoken as x, y, z, one, two, three",
     engagements: [
@@ -329,6 +315,47 @@ const LANGS: Record<Lang, { label: string; language: string }> = {
   da: { label: "Danish", language: "Danish" },
   en: { label: "English", language: "English" },
 };
+
+// Native US English HD Omni voice (catalog: en-us-ava:DragonHDOmniLatestNeural).
+const ENGLISH_VOICE = "en-US-Ava:DragonHDOmniLatestNeural";
+
+// The Cowork task that drives this page; the copy button puts it on the clipboard with the current URL.
+function coworkPrompt(): string {
+  const q = new URLSearchParams({ example: "1", lang: lang.value, cc: countryCode.value });
+  const digits = phone.value.replace(/\D/g, "");
+  if (digits) q.set("phone", digits);
+  const url = `${window.location.origin}${route.path}?${q.toString()}`;
+  return `Intelligent Commute Agent: my drive-home follow-up call.
+
+I am Iben, a CSAM at Microsoft. I drive 40 minutes each way and cannot type. Call me, let me approve my follow-ups by voice, then do the work for me.
+This is a live demo. Use only the fictional example on the page. Do not open my real mailbox, chats, ESXP or support tickets.
+
+1. Open ${url} in my browser.
+2. Check that "Today's plan" shows three tasks. If not, click "Load example". Then click "Call me".
+3. Tell me in one line: "Calling you now. Drive safely."
+4. Wait until #cowork-page has data-call-done="true" (check every 30 seconds, max 15 minutes).
+5. Read [data-testid=result-json]. If "verified" is false, stop and tell me the security check failed. Do nothing else.
+6. Show me: "N of M solved" from the page, a table of actions[] (type, target, status, content), and a two-line summary of the call.
+7. For every action with status "ready": I approved it on the call. Show the final Teams message or email with recipient and text, marked "Approved on the call". The customers are fictional, so show it as sent instead of really sending it.
+8. For every action with status "postponed" or "open": add it to tomorrow's call list and say "I'll follow up with you tomorrow on the daily call."`;
+}
+
+const copied = ref(false);
+async function copyCoworkPrompt() {
+  const text = coworkPrompt();
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  copied.value = true;
+  setTimeout(() => (copied.value = false), 2000);
+}
 
 const countryCode = ref(String(route.query.cc ?? "45").replace(/[^\d]/g, "") || "45");
 const phone = ref(String(route.query.phone ?? ""));
@@ -464,7 +491,9 @@ async function placeCall() {
         countryCode: countryCode.value,
         prompt: instructions.value,
         language: LANGS[lang.value].language,
-        languageCode: lang.value,
+        // A native English voice and en-US STT, otherwise the Danish default voice speaks English with an accent.
+        languageCode: lang.value === "en" ? "en-US" : lang.value,
+        ...(lang.value === "en" ? { voice: ENGLISH_VOICE } : {}),
       },
     });
     if (!res.success || !res.contextId) {
@@ -530,19 +559,18 @@ const field =
       fontFamily: SYSTEM_FONT,
     }"
   >
-    <header class="h-20 bg-white border-b border-slate-200">
-      <div class="max-w-5xl mx-auto h-full px-6 flex items-center gap-4">
-        <img :src="FAVICON" alt="" class="h-11 w-11" draggable="false" />
-        <span class="text-3xl font-extrabold tracking-tight text-slate-900">{{ APP_NAME }}</span>
-        <span class="ml-auto text-lg font-semibold text-slate-500">Cowork + voice agent</span>
+    <header class="h-28 bg-white border-b border-slate-200">
+      <div class="max-w-5xl mx-auto h-full px-6 flex items-center gap-5">
+        <img :src="FAVICON" alt="" class="h-16 w-16" draggable="false" />
+        <span class="text-5xl font-extrabold tracking-tight text-slate-900">{{ APP_NAME }} + CoWork</span>
       </div>
     </header>
 
     <main class="max-w-5xl mx-auto px-6 py-10 space-y-6">
       <div>
         <h1 class="text-6xl font-extrabold tracking-tight text-left leading-tight">
-          <span class="text-blue-600">+80 minutes</span> of productivity.<br />
-          Added to your daily commute.
+          Enable <span class="text-blue-600">80 minutes</span> of productivity<br />
+          for every CSAM and CSA.
         </h1>
         <p class="text-2xl font-semibold text-slate-600 mt-4">
           Answer your follow-ups by voice while you drive. Cowork does the rest.
@@ -704,6 +732,16 @@ const field =
             :disabled="!canCall"
           >
             Call me
+          </button>
+          <button
+            id="copy-cowork-prompt"
+            type="button"
+            data-testid="copy-cowork-prompt"
+            :data-copied="copied ? 'true' : 'false'"
+            class="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+            @click="copyCoworkPrompt"
+          >
+            {{ copied ? "Copied" : "Copy Cowork prompt" }}
           </button>
           <button
             v-if="contextId && !isBusy"

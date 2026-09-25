@@ -314,7 +314,9 @@ namespace CallAutomation.AzureAI.VoiceLive
                             prefix_padding_ms = vadPrefixPaddingMs,
                             silence_duration_ms = vadSilenceMs,
                             auto_truncate = true,
-                            appended_text_after_truncation = ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.TruncationNotice
+                            appended_text_after_truncation = m_languageCode?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true
+                                ? " [The caller interrupted me here.]"
+                                : ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.TruncationNotice
                         },
                     // No max_response_output_tokens cap — danish-voice-lab doesn't set one and
                     // we want identical behaviour. The system prompt's "1-2 sentences" rule
@@ -433,13 +435,22 @@ namespace CallAutomation.AzureAI.VoiceLive
                     // string to opt out entirely).
                     var voiceLocale = configuration.GetValue<string>("Voice:Locale")
                         ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceLocale;
+                    // A per-call voice from another language (e.g. "en-US-Ava:...") must speak its own
+                    // locale; pinning it to the da-DK default gives English with a Danish accent.
+                    var nameLocale = System.Text.RegularExpressions.Regex.Match(voiceName, @"^[a-z]{2}-[A-Z]{2}(?=-)").Value;
+                    var foreignVoice = nameLocale.Length > 0 && !string.IsNullOrWhiteSpace(voiceLocale)
+                        && !string.Equals(nameLocale, voiceLocale, StringComparison.OrdinalIgnoreCase);
+                    if (foreignVoice)
+                        voiceLocale = nameLocale;
                     if (!string.IsNullOrWhiteSpace(voiceLocale))
                         voice["locale"] = voiceLocale;
 
                     // Pins the accent on English loanwords inside Danish sentences ("router",
                     // "streaming", "bredbånd"). Unset = unpredictable accent per the API reference.
-                    var preferLocales = configuration.GetSection("Voice:PreferLocales").Get<string[]>()
-                        ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultPreferLocales;
+                    var preferLocales = foreignVoice
+                        ? new[] { nameLocale }
+                        : configuration.GetSection("Voice:PreferLocales").Get<string[]>()
+                            ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultPreferLocales;
                     if (preferLocales.Length > 0)
                         voice["prefer_locales"] = preferLocales;
                     break;
