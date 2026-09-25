@@ -108,112 +108,61 @@ Daily end-of-day voice debrief. Run every workday at 16:00.
    For "open" with priority "today": warn me that it is still not solved and say what is missing.
 ```
 
-### FINAL: Cowork scheduled task for the stage (press "Run now" live)
+### STAGE DEMO (final): caller page and Cowork side by side, click "Call me" live
 
-Create this scheduled task in Cowork before going on stage. Name: "Intelligent Commute Agent". Schedule: every workday at 07:30 and 16:00. On stage, open the task and press "Run now". Iben's phone (+45 30300857) rings within about 30 seconds.
+No live Cowork integration on stage. Two windows side by side on the TV:
+
+- **Left:** the caller page, https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=en&cc=45&phone=30300857 (hard-reload with Ctrl+Shift+R first). The example prompt, phone +45 30300857 and English are already filled in.
+- **Right:** Cowork in the browser, on the "create scheduled task" screen, with the Cowork prompt below pasted in (the "Copy Cowork prompt" button on the page copies it). Name "Intelligent Commute Agent", schedule every workday at 07:30 and 16:00. Show it, but do not run it.
+
+Run of show (about 5 minutes):
+
+1. Say: "Iben drives 40 minutes each way. That is 80 minutes a day where she cannot type."
+2. Point right: "Every morning and afternoon, Cowork runs this scheduled task. It finds her follow-ups, writes them into this page and calls her."
+3. Point left: "This is what Cowork fills in: today's news and three tasks." Scroll through "Since last night" and "Today's plan".
+4. Click **Call me** on the left page. Iben's phone rings within about 30 seconds. Speaker on.
+5. Iben answers with the call script below.
+6. After hang-up, the page shows the transcript, "2 of 3 solved" and the actions. Point right: "Tomorrow, Cowork reads exactly this and sends the approved messages for her."
+
+Cowork prompt (shown in the scheduled task, not run on stage):
 
 ```text
-Intelligent Commute Agent: my morning and evening drive briefing.
+Intelligent Commute Agent: my drive-home follow-up call.
 
-Context: I am Iben, a CSAM at Microsoft. I drive about 40 minutes each way, so 80 minutes a day where I cannot type. Use that time: call me, let me answer my follow-ups by voice, then do the work for me.
+I am Iben, a CSAM at Microsoft. I drive 40 minutes each way and cannot type. Call me, let me approve my follow-ups by voice, then do the work for me.
 This is a live demo. Use only the fictional example on the page. Do not open my real mailbox, chats, ESXP or support tickets.
 
 1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=en&cc=45&phone=30300857 in my browser.
-2. Check the page before calling:
-   - Country code is 45, phone number is 30300857, language is English.
-   - "Since last night" shows three items.
-   - "Today's plan" shows three tasks: two Today (the first marked Urgent) and one Can wait.
-   If anything is wrong, click "Load example" and check again. Then click "Call me".
-3. Tell me in one line: "Calling you now. Drive safely." Keep this page open while I take the call.
+2. Check that "Today's plan" shows three tasks. If not, click "Load example". Then click "Call me".
+3. Tell me in one line: "Calling you now. Drive safely."
 4. Wait until #cowork-page has data-call-done="true" (check every 30 seconds, max 15 minutes).
-5. Read [data-testid=result-json].
-   - If "verified" is false: stop, and tell me the security check failed. Do nothing else.
-   - Otherwise show me:
-     a) one headline: "N of M solved" from the page,
-     b) a table of actions[]: type, target, priority, status, content,
-     c) a three-line summary of the call.
-6. Do the work, as drafts only:
-   - escalate_ticket: draft the escalation to the support duty manager and the reply to the customer.
-   - book_resource: draft the booking to the CSA and the confirmation to the customer.
-   - reply_email / reply_teams: draft the reply to the target.
-   - status_update with status "ready": write it as an engagement note.
-   - postponed: put it on tomorrow morning's call list.
-   - open with priority today: warn me it is still not solved and say what is missing.
-7. End with: "Everything is drafted. Say yes and I will send it." Never send or submit anything before I say yes.
+5. Read [data-testid=result-json]. If "verified" is false, stop and tell me the security check failed. Do nothing else.
+6. Show me: "N of M solved" from the page, a table of actions[] (type, target, status, content), and a two-line summary of the call.
+7. For every action with status "ready": I approved it on the call. Show the final Teams message or email with recipient and text, marked "Approved on the call". The customers are fictional, so show it as sent instead of really sending it.
+8. For every action with status "postponed" or "open": add it to tomorrow's call list and say "I'll follow up with you tomorrow on the daily call."
 ```
 
-What Iben says on the call (in English, speaker on, as if driving): security "x, y, z, one, two, three", then "Birkedal Foods and Stormkyst Insurance"; then the answers in the call script below for tasks 1 to 3; then the quick update "Birkedal Foods confirmed the workshop on the 1st of October"; then "no, that's all". Expected on screen: "3 of 4 solved" and Cowork's drafts.
-### Call script for Iben (English, about 3 minutes)
+### Call script for Iben (English, about 2 minutes)
 
-Speaker on, phone in hand as if it sits in the car holder. The agent's lines are approximate; Iben's lines are what she says. Speak calmly, short sentences, and wait for the agent to finish before answering.
+The agent keeps every reply to one or two short sentences and asks one simple question at a time. Before any Teams message or email it drafts it and asks "Shall I send it?".
 
 | # | Agent (roughly) | Iben says |
 |---|-----------------|-----------|
-| 1 | "Hi Iben, it's your assistant with today's follow-ups. I have a little news from last night and three tasks. Two must be answered today, and the first one is urgent. Do you have five minutes?" | "Yes, I'm in the car. Go ahead." |
-| 2 | "Great. First two security questions. What is your alias?" | "x, y, z, one, two, three." |
+| 1 | "Hi Iben, this is your Intelligent Commute Agent. I have some quick news and three quick tasks. Is now a good time?" | "Yes, go ahead." |
+| 2 | "What is your alias?" | "x, y, z, one, two, three." |
 | 3 | "Can you name two of your upcoming engagements?" | "Birkedal Foods and Stormkyst Insurance." |
-| 4 | News: Havnestad wrote again last night, Stormkyst sent the attendee list with twelve people, Solbakke shared its architecture diagram. "Now to today's tasks." | (listen, say nothing) |
-| 5 | Task 1, urgent: the Havnestad Pension ticket has not moved for six days. Raise the priority or escalate, and what should the customer be told? | "Escalate it to the duty manager. It is blocking their go-live. Tell the customer they get an update by tomorrow noon." |
-| 6 | Repeats it back and asks if that is right. | "Yes, exactly." |
-| 7 | Task 2: a CSA on the 14th of October for Solbakke Pension. Mikkel Dahl in the morning or Laura Kjær all day? | "Book Laura for the whole day, and tell the customer she is confirmed." |
-| 8 | Task 3 (can wait): Havnestad Pension and Security Copilot. Now or another day? | "Let's take that one another day." |
-| 9 | "Any other quick updates or outcomes from today's engagements that I should write down or close?" | "Yes. Birkedal Foods confirmed the workshop on the 1st of October." |
-| 10 | "Anything else?" | "No, that's all." |
-| 11 | Summary: two solved plus one extra update, one postponed. Cowork takes care of the rest, approve when you arrive. Safe drive, hangs up. | "Thanks, bye." |
+| 4 | "Thanks, you're verified." Then three quick news items. | (listen) |
+| 5 | Task 1, urgent: the Havnestad Pension ticket is stuck for six days. "Shall I escalate it to the duty manager?" | "Yes, escalate it." |
+| 6 | Drafts a one-sentence email to the customer. "Shall I send it?" | "Yes, send it." |
+| 7 | Task 2: the Solbakke Pension workshop on the 14th of October needs a CSA. "Shall I book Laura?" | "Yes, book Laura." |
+| 8 | Drafts a one-sentence Teams message to the customer. "Shall I send it?" | "Yes, send it." |
+| 9 | Task 3: the Havnestad Security Copilot pilot. "What is the status?" | "I don't know yet." |
+| 10 | "No problem, I'll follow up with you tomorrow on the daily call." "Anything else for today?" | "No, that's all." |
+| 11 | One-sentence summary. "Safe drive, Iben. Bye." Hangs up. | "Bye." |
 
-Optional wow moment, between steps 6 and 7: Iben says "Wait a second, I'm going into a roundabout." The agent answers "of course, I'll wait" and goes quiet. After a few seconds she says "Okay, I'm back", and the agent picks up where it left off. This shows it is built for driving.
+Expected on the page afterwards: "2 of 3 solved". Ready: escalate_ticket plus the customer email (Havnestad), book_resource plus the Teams message (Solbakke). Postponed: the Havnestad Security Copilot status.
 
-If the agent mishears: just say the answer again, a little slower. If it repeats something back wrong: "No, it's ..." and the right answer. Say the alias one character at a time, not as one word.
-Expected on the TV afterwards: "3 of 4 solved". Solved: escalate_ticket (Havnestad), book_resource (Solbakke), and the Birkedal Foods status_update. Postponed: the Havnestad Security Copilot status_update.
-### Stage script: set it up as a Cowork scheduled task, then run it now (wow version)
-
-Iben pastes step 1 into Cowork on the TV. Cowork explains scheduled tasks and asks a few questions; she answers with the short lines in step 2, then says "run it now" and takes the phone call live.
-
-Step 1, paste into Cowork:
-
-```text
-I want to set up a scheduled task. Briefly explain how scheduled tasks work in Cowork, then ask me a few questions to figure out what I'd like Cowork to do and when it should run.
-
-Some context so your questions are sharp: I am a CSAM. I drive about 40 minutes to work and 40 minutes home, so 80 minutes a day where I cannot type. I want Cowork to use that time. Before each drive, Cowork should find what happened since I logged off and which follow-ups need an answer from me, then call me through my Intelligent Commute Agent page so I can answer by voice. When the call is done, Cowork reads the result and does the work for me.
-
-For this demo use only the fictional example on the page. Do not open my real mailbox, chats or reports.
-```
-
-Step 2, Iben's answers to Cowork's questions (say or type them, one per question):
-
-- What should it do? "Brief me on what happened since last night, then call me and go through my follow-ups: support tickets, CSA bookings and customer status questions."
-- When should it run? "Every workday at 7:30, when I start the car. And once more at 16:00 on the way home."
-- Where does it call me? "Use my Intelligent Commute Agent page: https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=en&cc=45&phone=30300857. English."
-- What should it do after the call? "Wait until the page says the call is done. Show me the actions and how many are solved. Draft the booking and the escalation. Never send anything before I say yes."
-- Anything it must not do? "No real customer data in this demo, and never send or submit without my approval."
-
-Step 3, after Cowork confirms the schedule, paste:
-
-```text
-Great. Run it once right now, so I can see it work.
-Open the page, check that "Since last night" has three items and "Today's plan" has two Today items (the first Urgent) and one Can wait item, then click "Call me".
-While I take the call, keep the page open and wait until #cowork-page has data-call-done="true".
-Then read [data-testid=result-json], show me a table of actions[] (type, target, status, content) and the "N of M solved" count,
-and draft what each "ready" action needs. Do not send or submit anything. Put "postponed" items on tomorrow morning's call.
-```
-
-Step 4, the phone rings. Iben picks up (speaker on, as if driving) and answers with the lines in the table above: security "x y z one two three" and "Birkedal Foods and Stormkyst", then the three tasks, then the quick update about Birkedal Foods. Expected result on screen: "3 of 4 solved" and Cowork's drafts.
-
-Line for the room while it rings: "80 minutes of productivity, added to my daily commute. That is 80 minutes where my follow-ups get done."
-### Cowork prompt (stage demo, fictional data only)
-
-```text
-End-of-day debrief (demo). Use only fictional data; do not open my real mailbox or real reports.
-
-1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=en&cc=45&phone=30300857 in my browser.
-2. Check that "Since last night" shows three items and "Today's plan" shows two Today items (the first Urgent) and one Can wait item, then click "Call me".
-3. Reopen the page with ?call=<contextId> every minute until #cowork-page has data-call-done="true".
-4. Read [data-testid=result-json] and show me a table of actions[] (type, target, priority, status, content)
-   and the "N of M solved" count.
-5. For "ready" actions: draft the reply or write the report closure text. Do not send or submit.
-   For "postponed": create a reminder for tomorrow. For "open": tell me what is still missing.
-6. Ask me to confirm before anything is sent or submitted.
-```
+If the agent mishears: say the answer again, a little slower. Say the alias one character at a time.
 
 `done` becomes `true` when the case summary has arrived (usually a few seconds after hang-up), or 60 seconds after hang-up if no summary comes.
 
