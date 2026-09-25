@@ -209,41 +209,39 @@ const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
   da: {
     hook: " Jeg har kort nyt og tre hurtige opgaver.",
     today: [
-      "HASTER. Supportsagen for Havnestad Pension har stået stille i seks dage. Spørg: \"Skal jeg eskalere den til vagthavende?\" Tilbyd derefter en mail til kunden om at sagen er eskaleret.",
-      "Workshoppen hos Solbakke Pension den 14. oktober mangler en CSA. Laura Kjær er ledig hele dagen, Mikkel Dahl kun om formiddagen. Spørg: \"Skal jeg booke Laura?\" Tilbyd derefter en Teams-besked til kunden om at bookingen er bekræftet.",
+      "HASTER. Supportsagen for Maersk har stået stille i seks dage. Spørg: \"Skal jeg eskalere den til vagthavende?\" Tilbyd derefter en mail til kunden om at sagen er eskaleret.",
+      "Workshoppen hos Novo Nordisk den 14. oktober mangler en CSA. Laura Smith er ledig hele dagen, Mike Jones kun om formiddagen. Spørg: \"Skal jeg booke Laura?\" Tilbyd derefter en Teams-besked til kunden om at bookingen er bekræftet.",
     ],
     later: [
-      "Security Copilot-piloten hos Havnestad Pension mangler stadig sikkerhedsgennemgangen. Spørg: \"Hvad er status?\" Tilbyd derefter en Teams-besked til kundeteamet med status.",
+      "Security Copilot-piloten hos Maersk mangler stadig sikkerhedsgennemgangen. Spørg: \"Hvad er status?\" Tilbyd derefter en Teams-besked til kundeteamet med status.",
     ],
     news: [
-      "Havnestad Pension skrev igen i aftes om supportsagen.",
-      "Stormkyst Forsikring har sendt deltagerlisten til hackathonet, tolv personer.",
-      "Solbakke Pension har delt deres arkitekturdiagram i Teams.",
+      "LEGO har sendt deltagerlisten til hackathonet, tolv personer.",
+      "Carlsberg takkede for sidste uges Copilot-udrulning.",
     ],
     alias: "xyz123, udtales x, y, z, et, to, tre",
     engagements: [
-      "Birkedal Foods, workshop om AI-agenter den 1. oktober",
-      "Stormkyst Forsikring, AI-hackathon den 8. oktober",
+      "Carlsberg, workshop om AI-agenter den 1. oktober",
+      "LEGO, AI-hackathon den 8. oktober",
     ],
   },
   en: {
     hook: " I have some quick news and three quick tasks.",
     today: [
-      "URGENT. The Havnestad Pension support ticket has been stuck for six days. Ask: \"Shall I escalate it to the duty manager?\" Then offer an email to the customer saying it is escalated.",
-      "The Solbakke Pension workshop on the 14th of October needs a CSA. Laura Kjær is free all day, Mikkel Dahl only in the morning. Ask: \"Shall I book Laura?\" Then offer a Teams message to the customer confirming the booking.",
+      "URGENT. The Maersk support ticket has been stuck for six days. Ask: \"Shall I escalate it to the duty manager?\" Then offer an email to the customer saying it is escalated.",
+      "The Novo Nordisk workshop on the 14th of October needs a CSA. Laura Smith is free all day, Mike Jones only in the morning. Ask: \"Shall I book Laura?\" Then offer a Teams message to the customer confirming the booking.",
     ],
     later: [
-      "The Havnestad Pension Security Copilot pilot is still missing its security review. Ask: \"What is the status?\" Then offer a Teams message to the account team with the status.",
+      "The Maersk Security Copilot pilot is still missing its security review. Ask: \"What is the status?\" Then offer a Teams message to the account team with the status.",
     ],
     news: [
-      "Havnestad Pension wrote again last night about the support ticket.",
-      "Stormkyst Insurance sent the hackathon attendee list, twelve people.",
-      "Solbakke Pension shared their architecture diagram in Teams.",
+      "LEGO sent the hackathon attendee list, twelve people.",
+      "Carlsberg said thanks for last week's Copilot rollout.",
     ],
     alias: "xyz123, spoken as x, y, z, one, two, three",
     engagements: [
-      "Birkedal Foods, AI agents workshop on the 1st of October",
-      "Stormkyst Insurance, AI hackathon on the 8th of October",
+      "Carlsberg, AI agents workshop on the 1st of October",
+      "LEGO, AI hackathon on the 8th of October",
     ],
   },
 };
@@ -400,6 +398,12 @@ const readyCount = computed(
   () => snapshot.value?.actions?.filter((a) => a.status === "ready").length ?? 0,
 );
 const agenda = computed(() => parseAgenda(instructions.value));
+const statusOf = (item: AgendaItem) =>
+  item.urgent
+    ? { label: "Urgent", dot: "bg-red-600", text: "text-red-700" }
+    : item.priority === "today"
+      ? { label: "Today", dot: "bg-amber-500", text: "text-amber-700" }
+      : { label: "Can wait", dot: "bg-emerald-600", text: "text-emerald-700" };
 const news = computed(() => parseNews(instructions.value));
 // First sentence only, so the plan reads as headlines on a big screen.
 const headline = (text: string) => text.split(/(?<=[.?!])\s+(?=[A-ZÆØÅ])/)[0];
@@ -539,10 +543,10 @@ onBeforeUnmount(stopPolling);
 // Overrides the global brand font variables from main.css for this page only.
 const SYSTEM_FONT =
   "'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif";
-const card = "bg-white rounded-xl border border-slate-200 p-5";
-const heading = "block text-sm font-bold text-slate-500 uppercase tracking-wider";
+const card = "bg-white rounded-2xl border border-slate-200 p-8";
+const heading = "block text-lg font-bold text-slate-500 uppercase tracking-wider";
 const field =
-  "w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-500";
+  "w-full px-4 py-3 text-xl rounded-lg border border-slate-300 bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-50 disabled:text-slate-500";
 </script>
 
 <template>
@@ -559,24 +563,33 @@ const field =
       fontFamily: SYSTEM_FONT,
     }"
   >
-    <header class="h-28 bg-white border-b border-slate-200">
-      <div class="max-w-5xl mx-auto h-full px-6 flex items-center gap-5">
-        <img :src="FAVICON" alt="" class="h-16 w-16" draggable="false" />
-        <span class="text-5xl font-extrabold tracking-tight text-slate-900">{{ APP_NAME }} + CoWork</span>
+    <header class="h-32 bg-white border-b border-slate-200">
+      <div class="max-w-[1800px] mx-auto h-full px-10 flex items-center gap-6">
+        <span class="text-6xl font-extrabold tracking-tight text-slate-900">{{ APP_NAME }}</span>
+        <img
+          src="/copilot.svg"
+          alt="Copilot Cowork"
+          data-testid="copilot-logo"
+          class="h-20 w-auto ml-4"
+          draggable="false"
+        />
+        <span class="text-6xl font-extrabold tracking-tight text-slate-900">CoWork</span>
       </div>
     </header>
 
-    <main class="max-w-5xl mx-auto px-6 py-10 space-y-6">
+    <main class="max-w-[1800px] mx-auto px-10 py-10 space-y-8">
       <div>
-        <h1 class="text-6xl font-extrabold tracking-tight text-left leading-tight">
+        <h1 class="text-7xl font-extrabold tracking-tight text-left leading-tight">
           Enable <span class="text-blue-600">80 minutes</span> of productivity<br />
           for every CSAM and CSA.
         </h1>
-        <p class="text-2xl font-semibold text-slate-600 mt-4">
+        <p class="text-3xl font-semibold text-slate-600 mt-5">
           Answer your follow-ups by voice while you drive. Cowork does the rest.
         </p>
       </div>
 
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div class="space-y-8">
       <!-- 1. Input -->
       <form
         id="call-form"
@@ -646,7 +659,7 @@ const field =
                 id="insert-example"
                 type="button"
                 data-testid="insert-example"
-                class="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-40"
+                class="text-lg font-semibold text-blue-600 hover:underline disabled:opacity-40"
                 :disabled="isBusy"
                 @click="instructions = exampleFor(lang)"
               >
@@ -656,7 +669,7 @@ const field =
                 id="insert-template"
                 type="button"
                 data-testid="insert-template"
-                class="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-40"
+                class="text-lg font-semibold text-blue-600 hover:underline disabled:opacity-40"
                 :disabled="isBusy"
                 @click="instructions = templateFor(lang)"
               >
@@ -670,65 +683,19 @@ const field =
             name="systemInstructions"
             data-testid="system-instructions"
             aria-label="System instructions"
-            rows="5"
+            rows="6"
             placeholder="What should the agent ask about? List today's open questions, replies and reports."
-            :class="[field, 'mt-2 text-sm leading-relaxed']"
+            :class="[field, 'mt-2 text-base leading-relaxed']"
             :disabled="isBusy"
           />
         </div>
 
-        <div v-if="news.length" data-testid="news" :data-news-count="news.length">
-          <span :class="heading">Since last night</span>
-          <ul class="mt-3 space-y-2">
-            <li
-              v-for="(n, i) in news"
-              :key="i"
-              data-testid="news-item"
-              class="flex items-start gap-3 text-xl text-slate-700"
-            >
-              <span class="mt-2.5 h-2.5 w-2.5 rounded-full bg-amber-500 shrink-0" />
-              <span>{{ headline(n) }}</span>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="agenda.length" data-testid="agenda" :data-agenda-count="agenda.length">
-          <span :class="heading">Today's plan</span>
-          <ol class="mt-3 space-y-3">
-            <li
-              v-for="item in agenda"
-              :key="item.n"
-              data-testid="agenda-item"
-              :data-priority="item.priority"
-              :data-urgent="item.urgent ? 'true' : 'false'"
-              class="flex items-center gap-3 text-xl"
-            >
-              <span class="tabular-nums font-bold text-slate-400 w-7 shrink-0">{{ item.n }}.</span>
-              <span
-                :class="[
-                  'shrink-0 rounded-full px-3 py-1 text-base font-semibold ring-1',
-                  item.priority === 'today'
-                    ? 'bg-blue-50 text-blue-700 ring-blue-200'
-                    : 'bg-slate-50 text-slate-600 ring-slate-200',
-                ]"
-                >{{ item.priority === "today" ? "Today" : "Can wait" }}</span
-              >
-              <span
-                v-if="item.urgent"
-                class="shrink-0 rounded-full px-3 py-1 text-base font-semibold ring-1 bg-red-50 text-red-700 ring-red-200"
-                >Urgent</span
-              >
-              <span class="font-semibold text-slate-800">{{ headline(item.text) }}</span>
-            </li>
-          </ol>
-        </div>
-
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-4">
           <button
             id="place-call"
             type="submit"
             data-testid="place-call"
-            class="px-10 py-4 rounded-xl bg-blue-600 text-white text-2xl font-extrabold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            class="px-14 py-5 rounded-xl bg-blue-600 text-white text-3xl font-extrabold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
             :disabled="!canCall"
           >
             Call me
@@ -738,7 +705,7 @@ const field =
             type="button"
             data-testid="copy-cowork-prompt"
             :data-copied="copied ? 'true' : 'false'"
-            class="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+            class="px-6 py-4 rounded-xl border border-slate-300 bg-white text-slate-700 text-xl font-semibold hover:bg-slate-50"
             @click="copyCoworkPrompt"
           >
             {{ copied ? "Copied" : "Copy Cowork prompt" }}
@@ -748,7 +715,7 @@ const field =
             id="new-call"
             type="button"
             data-testid="new-call"
-            class="px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50"
+            class="px-6 py-4 rounded-xl border border-slate-300 bg-white text-slate-700 text-xl font-semibold hover:bg-slate-50"
             @click="resetForm"
           >
             New call
@@ -766,7 +733,7 @@ const field =
           role="status"
           aria-live="polite"
           :class="[
-            'inline-block px-5 py-2 rounded-full text-2xl font-bold ring-1',
+            'inline-block px-6 py-3 rounded-full text-3xl font-bold ring-1',
             statusTone,
           ]"
         >
@@ -796,6 +763,51 @@ const field =
           The call is completed. Transcript and result are ready.
         </p>
       </section>
+      </div>
+
+      <div class="space-y-8">
+      <section v-if="news.length || agenda.length" :class="card">
+        <div v-if="news.length" data-testid="news" :data-news-count="news.length">
+          <span :class="heading">Since last night</span>
+          <ul class="mt-6 space-y-5 list-none">
+            <li
+              v-for="(n, i) in news"
+              :key="i"
+              data-testid="news-item"
+              class="flex items-start gap-5 text-4xl leading-snug text-slate-700"
+            >
+              <span class="mt-4 h-3 w-3 rounded-full bg-slate-400 shrink-0" />
+              <span>{{ headline(n) }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="agenda.length" class="mt-12" data-testid="agenda" :data-agenda-count="agenda.length">
+          <span :class="heading">Today's plan</span>
+          <ol class="mt-6 space-y-6 list-none">
+            <li
+              v-for="item in agenda"
+              :key="item.n"
+              data-testid="agenda-item"
+              :data-priority="item.priority"
+              :data-urgent="item.urgent ? 'true' : 'false'"
+              class="flex items-start gap-5"
+            >
+              <span
+                :class="['mt-2 h-8 w-8 rounded-full shrink-0', statusOf(item).dot]"
+                :title="statusOf(item).label"
+              />
+              <span class="flex-1">
+                <span :class="['block text-xl font-bold uppercase tracking-wider', statusOf(item).text]">{{
+                  statusOf(item).label
+                }}</span>
+                <span class="block text-4xl leading-snug font-semibold text-slate-800">{{ headline(item.text) }}</span>
+              </span>
+            </li>
+          </ol>
+        </div>
+
+      </section>
 
       <!-- 3. Transcript -->
       <section :class="[card, 'space-y-3']" aria-labelledby="transcript-heading">
@@ -819,7 +831,7 @@ const field =
             v-for="(e, i) in snapshot.entries"
             :key="i"
             :data-speaker="e.speaker"
-            class="text-lg leading-relaxed"
+            class="text-2xl leading-relaxed"
           >
             <span
               :class="[
@@ -842,7 +854,7 @@ const field =
         aria-labelledby="summary-heading"
       >
         <h2 id="summary-heading" :class="heading">Summary</h2>
-        <p class="text-lg leading-relaxed">{{ snapshot.summary }}</p>
+        <p class="text-2xl leading-relaxed">{{ snapshot.summary }}</p>
         <p class="text-xs text-slate-500">
           Outcome:
           <span data-testid="call-outcome">{{ snapshot.outcome }}</span>
@@ -873,7 +885,7 @@ const field =
           <h2 id="actions-heading" :class="heading">Actions</h2>
           <span
             v-if="snapshot.actions?.length"
-            class="text-3xl font-extrabold text-blue-700 tabular-nums"
+            class="text-5xl font-extrabold text-blue-700 tabular-nums"
             >{{ readyCount }} of {{ snapshot.actions.length }} solved</span
           >
         </div>
@@ -906,7 +918,7 @@ const field =
               :data-count="g.items.length"
               class="space-y-2"
             >
-              <h3 class="text-xl font-bold text-slate-700">
+              <h3 class="text-2xl font-bold text-slate-700">
                 {{ g.label }}
                 <span class="font-normal text-slate-500 tabular-nums">({{ g.items.length }})</span>
               </h3>
@@ -920,7 +932,7 @@ const field =
                   :data-action-target="a.target"
                   :data-action-status="a.status"
                   :data-action-priority="a.priority ?? 'today'"
-                  class="rounded-lg border border-slate-200 p-4 text-lg"
+                  class="rounded-lg border border-slate-200 p-5 text-2xl"
                 >
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="font-semibold">{{ actionLabel(a.type) }}</span>
@@ -947,6 +959,9 @@ const field =
             </div>
         </template>
       </section>
+
+      </div>
+      </div>
 
       <!-- 6. Machine-readable result -->
       <section
