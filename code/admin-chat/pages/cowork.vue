@@ -524,6 +524,16 @@ function resetForm() {
   router.replace({ path: route.path, query: {} });
 }
 
+// Demo reset: wipes the prompt and the finished call, keeps number and language for the next run.
+function clearAll() {
+  resetForm();
+  instructions.value = "";
+  router.replace({
+    path: route.path,
+    query: { lang: lang.value, cc: countryCode.value, phone: phone.value },
+  });
+}
+
 function speakerLabel(speaker: string) {
   if (speaker === "ai") return "Agent";
   if (speaker === "user") return "You";
@@ -717,6 +727,16 @@ const field =
             @click="resetForm"
           >
             New call
+          </button>
+          <button
+            id="clear-all"
+            type="button"
+            data-testid="clear-all"
+            :disabled="isBusy"
+            class="px-6 py-4 rounded-xl border border-red-300 bg-white text-red-700 text-xl font-semibold hover:bg-red-50 disabled:opacity-40"
+            @click="clearAll"
+          >
+            Clear
           </button>
         </div>
       </form>
