@@ -62,24 +62,20 @@ The persona is Iben (CSAM, driving). Customers and other people are fictional; n
 - Since last night: Havnestad Pension wrote again about the stalled ticket (worried about go-live); Stormkyst sent the hackathon attendee list (12 people); Solbakke Pension shared its architecture diagram in Teams.
 - Must answer today (Iben's real kinds of request, with fictional customers and details):
   1. URGENT: a stalled support ticket for Havnestad Pension (stand-in for PFA), six days without movement. Raise the priority or escalate to the duty manager?
-  2. Create a request for Solbakke Pension (stand-in for AP Pension): Azure landing zone review before an audit in November.
-  3. Confirm whether a CSA is free on 14 October for a workshop at Solbakke Pension. Cowork found Mikkel Dahl (morning) and Laura Kjær (all day).
+  2. Confirm whether a CSA is free on 14 October for a workshop at Solbakke Pension (stand-in for AP Pension). Cowork found Mikkel Dahl (morning) and Laura Kjær (all day).
 - Can wait:
-  4. Find a resource for Azure DevOps questions (pipelines). Cowork found Anna Berg (CSA, Azure DevOps) and an internal Azure DevOps Teams channel.
-  5. Where is Havnestad Pension on Security Copilot? Pilot with 20 users since August; the security review is missing.
+  3. Where is Havnestad Pension on Security Copilot? Pilot with 20 users since August; the security review is missing.
 
 Fictional answers Iben gives on the call (driving), and what Cowork does with them afterwards:
 
 | # | Iben says | Expected action | Cowork does (after she approves) |
 |---|-----------|-----------------|----------------------------------|
 | 1 | "Escalate it to the duty manager, it is blocking their go-live. Tell the customer they get an update by tomorrow noon." | `escalate_ticket`, ready | Drafts the escalation to the support duty manager and a reply to the customer. |
-| 2 | "Landing zone review, two days of CSA help, done before the 15th of November." | `create_request`, ready | Fills in the request with scope, effort and deadline. |
-| 3 | "Book Laura for the whole day, and tell the customer she is confirmed." | `book_resource`, ready | Sends Laura the booking and drafts the confirmation to the customer. |
-| 4 | "Connect him with Anna Berg." | `reply_email`, ready | Drafts an intro mail between the developer and Anna. |
-| 5 | "Another day." | `status_update`, postponed | Adds it to tomorrow's call. |
+| 2 | "Book Laura for the whole day, and tell the customer she is confirmed." | `book_resource`, ready | Sends Laura the booking and drafts the confirmation to the customer. |
+| 3 | "Another day." | `status_update`, postponed | Adds it to tomorrow's call. |
 | + | Quick update: "Birkedal Foods confirmed the workshop on the 1st of October." | `status_update`, ready (extra) | Writes it into the engagement notes. |
 
-Security answers: "x y z one two three"; "Birkedal Foods and Stormkyst". Result: "5 of 6 solved" (one postponed).
+Security answers: "x y z one two three"; "Birkedal Foods and Stormkyst". Result: "3 of 4 solved" (one postponed).
 ### Cowork prompt (daily scheduled task, ~16:00)
 
 ```text
@@ -122,11 +118,11 @@ Intelligent Commute Agent: my morning and evening drive briefing.
 Context: I am Iben, a CSAM at Microsoft. I drive about 40 minutes each way, so 80 minutes a day where I cannot type. Use that time: call me, let me answer my follow-ups by voice, then do the work for me.
 This is a live demo. Use only the fictional example on the page. Do not open my real mailbox, chats, ESXP or support tickets.
 
-1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=30300857 in my browser.
+1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=en&cc=45&phone=30300857 in my browser.
 2. Check the page before calling:
-   - Country code is 45, phone number is 30300857, language is Danish.
+   - Country code is 45, phone number is 30300857, language is English.
    - "Since last night" shows three items.
-   - "Today's plan" shows five tasks: three Today (the first marked Urgent) and two Can wait.
+   - "Today's plan" shows three tasks: two Today (the first marked Urgent) and one Can wait.
    If anything is wrong, click "Load example" and check again. Then click "Call me".
 3. Tell me in one line: "Calling you now. Drive safely." Keep this page open while I take the call.
 4. Wait until #cowork-page has data-call-done="true" (check every 30 seconds, max 15 minutes).
@@ -138,7 +134,6 @@ This is a live demo. Use only the fictional example on the page. Do not open my 
      c) a three-line summary of the call.
 6. Do the work, as drafts only:
    - escalate_ticket: draft the escalation to the support duty manager and the reply to the customer.
-   - create_request: fill in the request text with scope, effort and deadline.
    - book_resource: draft the booking to the CSA and the confirmation to the customer.
    - reply_email / reply_teams: draft the reply to the target.
    - status_update with status "ready": write it as an engagement note.
@@ -147,32 +142,29 @@ This is a live demo. Use only the fictional example on the page. Do not open my 
 7. End with: "Everything is drafted. Say yes and I will send it." Never send or submit anything before I say yes.
 ```
 
-What Iben says on the call (in Danish, speaker on, as if driving): security "x y z en to tre", then "Birkedal Foods og Stormkyst"; then the answers in the table above for tasks 1 to 5; then the quick update "Birkedal Foods har bekræftet workshoppen den 1. oktober"; then "nej, det var det". Expected on screen: "5 of 6 solved" and Cowork's drafts.
-### Call script for Iben (Danish, about 4 minutes)
+What Iben says on the call (in English, speaker on, as if driving): security "x, y, z, one, two, three", then "Birkedal Foods and Stormkyst Insurance"; then the answers in the call script below for tasks 1 to 3; then the quick update "Birkedal Foods confirmed the workshop on the 1st of October"; then "no, that's all". Expected on screen: "3 of 4 solved" and Cowork's drafts.
+### Call script for Iben (English, about 3 minutes)
 
 Speaker on, phone in hand as if it sits in the car holder. The agent's lines are approximate; Iben's lines are what she says. Speak calmly, short sentences, and wait for the agent to finish before answering.
 
 | # | Agent (roughly) | Iben says |
 |---|-----------------|-----------|
-| 1 | "Hej Iben, det er din assistent med dagens opfølgning. Jeg har lidt nyt fra i aftes og fem opgaver. Tre skal svares i dag, og den første haster. Har du fem minutter?" | "Ja, jeg sidder i bilen. Kør bare." |
-| 2 | "Godt. Først to sikkerhedsspørgsmål. Hvad er dit alias?" | "x, y, z, et, to, tre." |
-| 3 | "Kan du nævne to af dine kommende engagementer?" | "Birkedal Foods og Stormkyst Forsikring." |
-| 4 | News: Havnestad wrote again last night, Stormkyst sent the attendee list with twelve people, Solbakke shared its architecture diagram. "Så til dagens opgaver." | (listen, say nothing) |
-| 5 | Task 1, urgent: the Havnestad Pension ticket has stood still for six days. Raise priority or escalate, and what should the customer be told? | "Eskalér den til vagthavende. Den blokerer deres go-live. Sig til kunden, at de får en opdatering i morgen klokken tolv." |
-| 6 | Repeats back and asks if that is right. | "Ja, præcis." |
-| 7 | Task 2: create a request for Solbakke Pension, landing zone review. What should it contain, what help, and when? | "En gennemgang af landingszonen, to dages hjælp fra en CSA, og den skal være færdig før den 15. november." |
-| 8 | Task 3: CSA on 14 October. Mikkel Dahl in the morning or Laura Kjær all day? | "Book Laura hele dagen, og sig til kunden, at hun er bekræftet." |
-| 9 | Task 4 (can wait): Azure DevOps resource for the developer at Solbakke. Now or another day? | "Lad os tage den nu. Kobl ham på Anna Berg." |
-| 10 | Task 5 (can wait): Havnestad Pension and Security Copilot. Now or another day? | "Den tager vi en anden dag." |
-| 11 | "Har du andre hurtige opdateringer eller resultater fra dagens engagementer?" | "Ja. Birkedal Foods har bekræftet workshoppen den 1. oktober." |
-| 12 | "Andet?" | "Nej, det var det." |
-| 13 | Summary: four solved plus one extra update, one postponed. Cowork does the rest, approve when you arrive. Good trip, hangs up. | "Tak, hej hej." |
+| 1 | "Hi Iben, it's your assistant with today's follow-ups. I have a little news from last night and three tasks. Two must be answered today, and the first one is urgent. Do you have five minutes?" | "Yes, I'm in the car. Go ahead." |
+| 2 | "Great. First two security questions. What is your alias?" | "x, y, z, one, two, three." |
+| 3 | "Can you name two of your upcoming engagements?" | "Birkedal Foods and Stormkyst Insurance." |
+| 4 | News: Havnestad wrote again last night, Stormkyst sent the attendee list with twelve people, Solbakke shared its architecture diagram. "Now to today's tasks." | (listen, say nothing) |
+| 5 | Task 1, urgent: the Havnestad Pension ticket has not moved for six days. Raise the priority or escalate, and what should the customer be told? | "Escalate it to the duty manager. It is blocking their go-live. Tell the customer they get an update by tomorrow noon." |
+| 6 | Repeats it back and asks if that is right. | "Yes, exactly." |
+| 7 | Task 2: a CSA on the 14th of October for Solbakke Pension. Mikkel Dahl in the morning or Laura Kjær all day? | "Book Laura for the whole day, and tell the customer she is confirmed." |
+| 8 | Task 3 (can wait): Havnestad Pension and Security Copilot. Now or another day? | "Let's take that one another day." |
+| 9 | "Any other quick updates or outcomes from today's engagements that I should write down or close?" | "Yes. Birkedal Foods confirmed the workshop on the 1st of October." |
+| 10 | "Anything else?" | "No, that's all." |
+| 11 | Summary: two solved plus one extra update, one postponed. Cowork takes care of the rest, approve when you arrive. Safe drive, hangs up. | "Thanks, bye." |
 
-Optional wow moment, between steps 7 and 8: Iben says "Vent lige, jeg skal ind i en rundkørsel." The agent answers "selvfølgelig, jeg venter" and goes quiet. After a few seconds she says "Okay, jeg er her igen", and the agent picks up where it left off. This shows it is built for driving.
+Optional wow moment, between steps 6 and 7: Iben says "Wait a second, I'm going into a roundabout." The agent answers "of course, I'll wait" and goes quiet. After a few seconds she says "Okay, I'm back", and the agent picks up where it left off. This shows it is built for driving.
 
-If the agent mishears: just say the answer again, a little slower. If it asks to confirm something wrong: "Nej, det er ..." and the right answer. Do not say the alias letters as one word.
-
-Expected on the TV afterwards: "5 of 6 solved". Solved: escalate_ticket (Havnestad), create_request and book_resource (Solbakke), reply_email (Anna Berg), and the Birkedal Foods status_update. Postponed: the Havnestad Security Copilot status_update.
+If the agent mishears: just say the answer again, a little slower. If it repeats something back wrong: "No, it's ..." and the right answer. Say the alias one character at a time, not as one word.
+Expected on the TV afterwards: "3 of 4 solved". Solved: escalate_ticket (Havnestad), book_resource (Solbakke), and the Birkedal Foods status_update. Postponed: the Havnestad Security Copilot status_update.
 ### Stage script: set it up as a Cowork scheduled task, then run it now (wow version)
 
 Iben pastes step 1 into Cowork on the TV. Cowork explains scheduled tasks and asks a few questions; she answers with the short lines in step 2, then says "run it now" and takes the phone call live.
@@ -189,23 +181,23 @@ For this demo use only the fictional example on the page. Do not open my real ma
 
 Step 2, Iben's answers to Cowork's questions (say or type them, one per question):
 
-- What should it do? "Brief me on what happened since last night, then call me and go through my follow-ups: support tickets, requests, CSA bookings and customer questions."
+- What should it do? "Brief me on what happened since last night, then call me and go through my follow-ups: support tickets, CSA bookings and customer status questions."
 - When should it run? "Every workday at 7:30, when I start the car. And once more at 16:00 on the way home."
-- Where does it call me? "Use my Intelligent Commute Agent page: https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=30300857. Danish."
-- What should it do after the call? "Wait until the page says the call is done. Show me the actions and how many are solved. Draft the replies, the request, the booking and the escalation. Never send anything before I say yes."
+- Where does it call me? "Use my Intelligent Commute Agent page: https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=en&cc=45&phone=30300857. English."
+- What should it do after the call? "Wait until the page says the call is done. Show me the actions and how many are solved. Draft the booking and the escalation. Never send anything before I say yes."
 - Anything it must not do? "No real customer data in this demo, and never send or submit without my approval."
 
 Step 3, after Cowork confirms the schedule, paste:
 
 ```text
 Great. Run it once right now, so I can see it work.
-Open the page, check that "Since last night" has three items and "Today's plan" has three Today items (the first Urgent) and two Can wait items, then click "Call me".
+Open the page, check that "Since last night" has three items and "Today's plan" has two Today items (the first Urgent) and one Can wait item, then click "Call me".
 While I take the call, keep the page open and wait until #cowork-page has data-call-done="true".
 Then read [data-testid=result-json], show me a table of actions[] (type, target, status, content) and the "N of M solved" count,
 and draft what each "ready" action needs. Do not send or submit anything. Put "postponed" items on tomorrow morning's call.
 ```
 
-Step 4, the phone rings. Iben picks up (speaker on, as if driving) and answers with the lines in the table above: security "x y z one two three" and "Birkedal Foods and Stormkyst", then the five tasks, then the quick update about Birkedal Foods. Expected result on screen: "5 of 6 solved" and Cowork's drafts.
+Step 4, the phone rings. Iben picks up (speaker on, as if driving) and answers with the lines in the table above: security "x y z one two three" and "Birkedal Foods and Stormkyst", then the three tasks, then the quick update about Birkedal Foods. Expected result on screen: "3 of 4 solved" and Cowork's drafts.
 
 Line for the room while it rings: "80 minutes of productivity, added to my daily commute. That is 80 minutes where my follow-ups get done."
 ### Cowork prompt (stage demo, fictional data only)
@@ -213,8 +205,8 @@ Line for the room while it rings: "80 minutes of productivity, added to my daily
 ```text
 End-of-day debrief (demo). Use only fictional data; do not open my real mailbox or real reports.
 
-1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=da&cc=45&phone=30300857 in my browser.
-2. Check that "Since last night" shows three items and "Today's plan" shows three Today items (the first Urgent) and two Can wait items, then click "Call me".
+1. Open https://ca-admin-chat.mangoglacier-49a73362.swedencentral.azurecontainerapps.io/reporting?example=1&lang=en&cc=45&phone=30300857 in my browser.
+2. Check that "Since last night" shows three items and "Today's plan" shows two Today items (the first Urgent) and one Can wait item, then click "Call me".
 3. Reopen the page with ?call=<contextId> every minute until #cowork-page has data-call-done="true".
 4. Read [data-testid=result-json] and show me a table of actions[] (type, target, priority, status, content)
    and the "N of M solved" count.

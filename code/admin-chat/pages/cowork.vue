@@ -217,18 +217,16 @@ const BLANK_PLAN: Record<Lang, CallPlan> = {
   },
 };
 
-// Fictional demo day for Iben (CSAM), built from five real kinds of request she gets.
+// Fictional demo day for Iben (CSAM), built from three real kinds of request she gets.
 // Customers and people are fictional stand-ins; the context is what Cowork would have found in Teams, Outlook and the support portal.
 const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
   da: {
-    hook: " Jeg har lidt nyt fra i aftes og fem opgaver. Tre skal svares i dag, og den første haster.",
+    hook: " Jeg har lidt nyt fra i aftes og tre opgaver. To skal svares i dag, og den første haster.",
     today: [
       "HASTER. Supportsagen for Havnestad Pension er gået i stå. Den har stået stille i seks dage, og kunden har skrevet to gange. Spørg om Cowork skal bede support om at prioritere sagen højere eller eskalere den til vagthavende, og hvad kunden skal have at vide.",
-      "Opret en anmodning for Solbakke Pension. Kunden vil have en gennemgang af deres Azure-landingszone før en revision i november. Spørg hvad anmodningen skal indeholde, hvilken type hjælp de skal have, og hvornår den skal være færdig.",
       "Bekræft om en CSA er ledig den 14. oktober til en workshop hos Solbakke Pension. Cowork har fundet at Mikkel Dahl er ledig om formiddagen, og Laura Kjær er ledig hele dagen. Spørg hvem der skal bookes, og hvad kunden skal have at vide.",
     ],
     later: [
-      "Find en ressource til spørgsmål om Azure DevOps. En udvikler hos Solbakke Pension har spørgsmål om pipelines. Cowork har fundet Anna Berg, CSA med Azure DevOps som speciale, og en intern Teams-kanal for Azure DevOps. Spørg hvem kunden skal kobles på, eller om det skal tages en anden dag.",
       "Hvor er Havnestad Pension med Security Copilot? Kunden startede en pilot med tyve brugere i august, og sikkerhedsgennemgangen mangler stadig. Spørg om status, næste skridt, og hvem der skal have opdateringen.",
     ],
     news: [
@@ -243,14 +241,12 @@ const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
     ],
   },
   en: {
-    hook: " I have a little news from last night and five tasks. Three must be answered today, and the first one is urgent.",
+    hook: " I have a little news from last night and three tasks. Two must be answered today, and the first one is urgent.",
     today: [
       "URGENT. The support ticket for Havnestad Pension is stalled. It has not moved for six days, and the customer has written twice. Ask whether Cowork should ask support to raise its priority or escalate it to the duty manager, and what the customer should be told.",
-      "Create a request for Solbakke Pension. The customer wants a review of their Azure landing zone before an audit in November. Ask what the request should contain, what kind of help they need, and when it must be done.",
       "Confirm whether a CSA is available on the 14th of October for a workshop at Solbakke Pension. Cowork found that Mikkel Dahl is free in the morning and Laura Kjær is free all day. Ask who should be booked and what the customer should be told.",
     ],
     later: [
-      "Find a resource for questions about Azure DevOps. A developer at Solbakke Pension has questions about pipelines. Cowork found Anna Berg, a CSA specialised in Azure DevOps, and an internal Teams channel for Azure DevOps. Ask who the customer should be connected with, or whether it should be done another day.",
       "Where is Havnestad Pension on Security Copilot? The customer started a pilot with twenty users in August, and the security review is still missing. Ask for the status, next steps, and who should get the update.",
     ],
     news: [
