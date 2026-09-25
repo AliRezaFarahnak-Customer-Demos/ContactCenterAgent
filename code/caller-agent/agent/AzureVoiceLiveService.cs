@@ -997,7 +997,7 @@ namespace CallAutomation.AzureAI.VoiceLive
                     m_caseSummaryEmitted = true;
                     try
                     {
-                        var summary = await m_analysisService.GenerateCaseSummaryAsync();
+                        var summary = await m_analysisService.GenerateCaseSummaryAsync(m_systemPrompt);
                         if (summary != null) m_caseSummaryWriter.TryWrite(summary);
                     }
                     catch (Exception sumEx) { m_logger.LogWarning(sumEx, "Case summary generation failed"); }

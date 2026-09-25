@@ -93,6 +93,8 @@ var caseSummaryChannels = new ConcurrentDictionary<string, Channel<CaseSummary>>
 var callLogSubscribers = new ConcurrentDictionary<string, Channel<CallLogEntry>>();
 // Keep a history so late-connecting SSE clients see recent entries
 var callLogHistory = new ConcurrentBag<CallLogEntry>();
+// Pollable transcript + summary per outbound call (survives the SSE channel; read by /cowork)
+var callRecordings = new CallRecordingStore();
 
 // ---------------------------------------------------------------------------
 // Outreach services (voice + SMS + email) + MCP server (anonymous)
@@ -213,6 +215,7 @@ async Task<string> PlaceOutboundCallCoreAsync(OutboundCallRequest request, ILogg
         SingleWriter = true
     });
     transcriptionChannels[contextId] = transcriptionChannel;
+    callRecordings.Start(contextId, request.PhoneNumber, request.Name, request.Purpose);
 
     // Create an analysis channel for this call
     var analysisChannel = Channel.CreateUnbounded<AnalysisResult>(new UnboundedChannelOptions
@@ -238,6 +241,7 @@ async Task<string> PlaceOutboundCallCoreAsync(OutboundCallRequest request, ILogg
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
             await foreach (var summary in caseSummaryChannel.Reader.ReadAllAsync(cts.Token))
             {
+                callRecordings.SetSummary(contextId, summary);
                 await outreachForVoice.FinalizeVoiceAsync(contextId, summary);
                 break;
             }
@@ -510,6 +514,7 @@ app.MapPost("/api/callbacks/{contextId}", async (
             callVoices.TryRemove(contextId, out _);
             callVoiceStyles.TryRemove(contextId, out _);
             callConnections.TryRemove(contextId, out _);
+            callRecordings.MarkEnded(contextId);
 
             // Complete the transcription channel so SSE consumers know the call ended
             if (transcriptionChannels.TryRemove(contextId, out var channel))
@@ -624,7 +629,7 @@ app.Use(async (context, next) =>
                 ChannelWriter<TranscriptionEvent>? transcriptionWriter = null;
                 if (!string.IsNullOrEmpty(wsContextId) && transcriptionChannels.TryGetValue(wsContextId, out var txChannel))
                 {
-                    transcriptionWriter = txChannel.Writer;
+                    transcriptionWriter = callRecordings.Tee(wsContextId, txChannel.Writer);
                 }
 
                 // Look up the analysis channel for this call
@@ -753,6 +758,15 @@ app.MapGet("/api/transcription/{contextId}", async (string contextId, HttpContex
         logger.LogInformation("SSE transcription client disconnected for context {ContextId}", contextId);
     }
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/calls/{contextId}/transcript — pollable transcript + summary (JSON).
+// Unlike the SSE stream this can be re-read any time within 24 h, by any number of clients.
+// ---------------------------------------------------------------------------
+app.MapGet("/api/calls/{contextId}/transcript", (string contextId) =>
+    callRecordings.Get(contextId) is { } snapshot
+        ? Results.Ok(snapshot)
+        : Results.NotFound(new { error = "Call not found (unknown id, older than 24 h, or agent restarted)" }));
 
 // ---------------------------------------------------------------------------
 // GET /api/analysis/{contextId} — SSE stream of live conversation analysis

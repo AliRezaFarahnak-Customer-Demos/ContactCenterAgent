@@ -66,9 +66,25 @@ public class ConversationAnalysisService : IDisposable
                 "topics": { "type": "array", "items": { "type": "string" }, "description": "1-4 short Danish topic tags, e.g. regning, fiber, flytning." },
                 "verified": { "type": "boolean", "description": "True only if the caller passed MFA (address + one more security answer) in this interaction." },
                 "followUpNeeded": { "type": "boolean", "description": "True if the case is not fully resolved and a follow-up on another channel is warranted." },
-                "followUpDraft": { "type": "string", "description": "If followUpNeeded, a short Danish follow-up message body suitable for SMS or email. Empty string otherwise. No emojis, no markdown." }
+                "followUpDraft": { "type": "string", "description": "If followUpNeeded, a short Danish follow-up message body suitable for SMS or email. Empty string otherwise. No emojis, no markdown." },
+                "actions": {
+                    "type": "array",
+                    "description": "Concrete tasks the person on the call asked to have carried out (close a report, reply to an email or Teams message, etc). Empty array if none.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": { "type": "string", "enum": ["close_report", "update_report", "reply_email", "reply_teams", "send_email", "send_teams", "create_task", "create_request", "book_resource", "escalate_ticket", "status_update", "other"] },
+                            "target": { "type": "string", "description": "Who or what the action applies to: customer, report, person, or thread, e.g. Fjordvik Logistics." },
+                            "content": { "type": "string", "description": "The text to submit or send, written ready to paste, in the language spoken on the call." },
+                            "status": { "type": "string", "enum": ["ready", "postponed", "open"], "description": "ready = solved, the person gave everything needed; postponed = they agreed to do it another day; open = not solved, it still needs an answer." },
+                            "priority": { "type": "string", "enum": ["today", "later"], "description": "today = must be answered or closed today; later = can wait." }
+                        },
+                        "required": ["type", "target", "content", "status", "priority"],
+                        "additionalProperties": false
+                    }
+                }
             },
-            "required": ["summary", "outcome", "topics", "verified", "followUpNeeded", "followUpDraft"],
+            "required": ["summary", "outcome", "topics", "verified", "followUpNeeded", "followUpDraft", "actions"],
             "additionalProperties": false
         }
         """u8.ToArray());
@@ -80,9 +96,10 @@ public class ConversationAnalysisService : IDisposable
         Rules:
         - summary: 2-3 factual sentences. What the customer wanted and what happened. No opinions, no emojis, no markdown, no asterisks.
         - outcome: pick the single best fit. 'resolved' only if the customer's need was fully met. 'callback_needed' if something was promised or left open. 'verification_failed' if MFA did not pass. 'escalated' if handed to a human. 'no_answer' if no real conversation happened.
-        - verified: true ONLY if the customer confirmed their address AND one more security answer this interaction.
+        - verified: true ONLY if the customer confirmed their address AND one more security answer this interaction. When the call instructions define another security check (for example an alias plus upcoming engagements), true only if that check passed.
         - followUpNeeded: true when the case is open or something was promised.
         - followUpDraft: if followUpNeeded, write a warm, concrete Danish message (under 320 chars, SMS-safe) the customer can receive on another channel. Reference the concrete open point. No emojis, no markdown. Empty string if no follow-up needed.
+        - actions: one entry per task listed in the call instructions (only when they contain an explicit task list) plus every extra task the person asked for on the call, e.g. "close the report for Fjordvik Logistics, we made the POC production ready today" gives {type: close_report, target: "Fjordvik Logistics", content: "The POC was made production ready today.", status: ready, priority: today}. Write content ready to paste, in the language spoken on the call, and include every detail they gave (dates, names, numbers). status: ready when solved, postponed when they chose another day, open when it was not answered. priority: take it from the instructions (today for must-answer items, later for items that can wait); extra tasks from the call are today unless they said otherwise. For open items, content says what is still missing. If the security check failed, return an empty actions array. Empty array when no such tasks exist, which is normal for customer-service calls. Type guide: create_request for a new request or engagement for a customer, book_resource for booking or confirming a person such as a CSA, escalate_ticket for raising the priority of a support case, status_update for a status the person gave that must be written down or passed on.
         """;
 
     private const string AnalysisSystemPrompt =
@@ -247,7 +264,7 @@ public class ConversationAnalysisService : IDisposable
     /// from the hang-up/farewell timing chain — safe to await off the critical path.
     /// Returns null if there was no meaningful conversation or the model call failed.
     /// </summary>
-    public async Task<CaseSummary?> GenerateCaseSummaryAsync()
+    public async Task<CaseSummary?> GenerateCaseSummaryAsync(string? callBrief = null)
     {
         if (_conversationHistory.Count == 0) return null;
 
@@ -263,10 +280,14 @@ public class ConversationAnalysisService : IDisposable
                     jsonSchemaIsStrict: true)
             };
 
+            var brief = string.IsNullOrWhiteSpace(callBrief)
+                ? ""
+                : $"Instructions the agent was given for this call (the task list, priorities and security check):\n{callBrief}\n\n";
+
             var messages = new ChatMessage[]
             {
                 new SystemChatMessage(CaseSummarySystemPrompt),
-                new UserChatMessage($"Summarize this completed interaction:\n\n{transcript}")
+                new UserChatMessage($"{brief}Summarize this completed interaction:\n\n{transcript}")
             };
 
             var completion = await _chatClient.CompleteChatAsync(messages, options);
@@ -284,7 +305,15 @@ public class ConversationAnalysisService : IDisposable
                 FollowUpNeeded: root.TryGetProperty("followUpNeeded", out var f) && f.ValueKind == JsonValueKind.True,
                 FollowUpDraft: root.TryGetProperty("followUpDraft", out var d) ? d.GetString() ?? "" : "",
                 Timestamp: DateTime.UtcNow,
-                Analysis: LatestAnalysis
+                Analysis: LatestAnalysis,
+                Actions: root.TryGetProperty("actions", out var a) && a.ValueKind == JsonValueKind.Array
+                    ? a.EnumerateArray().Select(e => new CaseAction(
+                        Type: e.TryGetProperty("type", out var at) ? at.GetString() ?? "other" : "other",
+                        Target: e.TryGetProperty("target", out var ag) ? ag.GetString() ?? "" : "",
+                        Content: e.TryGetProperty("content", out var ac) ? ac.GetString() ?? "" : "",
+                        Status: e.TryGetProperty("status", out var st) ? st.GetString() ?? "ready" : "ready",
+                        Priority: e.TryGetProperty("priority", out var pr) ? pr.GetString() ?? "today" : "today")).ToArray()
+                    : Array.Empty<CaseAction>()
             );
 
             _telemetryClient?.TrackEvent("CaseSummary", new Dictionary<string, string>
@@ -349,8 +378,12 @@ public record CaseSummary(
     bool FollowUpNeeded,
     string FollowUpDraft,
     DateTime Timestamp,
-    AnalysisResult? Analysis = null
+    AnalysisResult? Analysis = null,
+    CaseAction[]? Actions = null
 );
+
+/// <summary>A task spoken on the call that an automation (e.g. Cowork) should carry out.</summary>
+public record CaseAction(string Type, string Target, string Content, string Status, string Priority = "today");
 
 internal record TranscriptLine(string Speaker, string Text);
 
