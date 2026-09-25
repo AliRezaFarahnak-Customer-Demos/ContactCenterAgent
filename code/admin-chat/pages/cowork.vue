@@ -523,7 +523,7 @@ const field =
     :data-call-status="status"
     :data-call-done="isDone ? 'true' : 'false'"
     :data-context-id="contextId || undefined"
-    class="min-h-screen bg-slate-50 text-slate-900"
+    class="h-dvh overflow-y-auto bg-slate-50 text-slate-900"
     :style="{
       '--font-body': SYSTEM_FONT,
       '--font-headline': SYSTEM_FONT,
