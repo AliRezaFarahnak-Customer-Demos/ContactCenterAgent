@@ -7,7 +7,7 @@
  * call state is exposed as text and as data attributes, and the result can be
  * re-read later via /reporting?call=<contextId> (aliases: /cowork, /value, /outcome).
  *
- * Also reachable at /reporting, /value and /outcome. Optional prefill query params: phone, cc, lang (da|en), instructions.
+ * Also reachable at /reporting, /value and /outcome. Optional prefill query params: phone, cc, lang (da, en or a locale from LANGS, e.g. de-DE), instructions.
  */
 definePageMeta({ alias: ["/reporting", "/value", "/outcome"] });
 
@@ -43,6 +43,7 @@ type PageStatus =
   | "ended"
   | "completed"
   | "error";
+// Prompt templates exist in Danish and English; every other call language uses the English one.
 type Lang = "da" | "en";
 
 const APP_NAME = "Intelligent Commute Agent";
@@ -90,7 +91,7 @@ const HEADERS: Record<Lang, { today: string; later: string }> = {
 const PROMPT_TEXT: Record<
   Lang,
   {
-    intro: string;
+    intro: (language: string) => string;
     driving: string;
     opening: (hook: string) => string;
     security: (alias: string, engagements: string[]) => string;
@@ -99,7 +100,7 @@ const PROMPT_TEXT: Record<
   }
 > = {
   da: {
-    intro: `Du er Intelligent Commute Agent for Iben, der er Customer Success Account Manager hos Microsoft. Du ringer, mens hun kører hjem, for at klare dagens opfølgninger. Tal dansk. Hvert svar er højst en eller to korte sætninger. Stil ét enkelt spørgsmål ad gangen. Cowork sender de godkendte beskeder efter opkaldet.
+    intro: () => `Du er Intelligent Commute Agent for Iben, der er Customer Success Account Manager hos Microsoft. Du ringer, mens hun kører hjem, for at klare dagens opfølgninger. Tal dansk. Hvert svar er højst en eller to korte sætninger. Stil ét enkelt spørgsmål ad gangen. Cowork sender de godkendte beskeder efter opkaldet.
 
 Navn: Iben`,
     driving: `HUN KØRER BIL
@@ -139,7 +140,11 @@ AFSLUTNING
 - Sig "god tur, Iben. Hej hej." og brug hang_up.`,
   },
   en: {
-    intro: `You are the Intelligent CoWork Agent for Iben, a Customer Success Account Manager at Microsoft, connected to her Cowork. You call her on her drive home to clear today's follow-ups. Speak English. Keep every reply to one or two short sentences. Ask one simple question at a time. Cowork sends the approved messages after the call.`,
+    intro: (language) => `You are the Intelligent CoWork Agent for Iben, a Customer Success Account Manager at Microsoft, connected to her Cowork. You call her on her drive home to clear today's follow-ups. Speak ${language}.${
+      /English$/.test(language)
+        ? ""
+        : ` These instructions and every quoted phrase below are written in English: always say them in natural, fluent ${language}, never in English.`
+    } Keep every reply to one or two short sentences. Ask one simple question at a time. Cowork sends the approved messages after the call.`,
     driving: `SHE IS DRIVING
 - She cannot look at a screen or type. Never read out links, numbers or email addresses.
 - If she says "wait" or needs to focus on the traffic, say "of course, I'll wait" and stay quiet until she speaks again.
@@ -244,13 +249,14 @@ const EXAMPLE_PLAN: Record<Lang, CallPlan> = {
     ],
   },
 };
-function buildPrompt(l: Lang, plan: CallPlan): string {
+function buildPrompt(code: string, plan: CallPlan): string {
+  const l = templateLang(code);
   const t = PROMPT_TEXT[l];
   const h = HEADERS[l];
   const list = (tasks: string[], offset: number) =>
     tasks.map((task, i) => `${offset + i + 1}. ${task}`).join("\n");
   return [
-    t.intro,
+    t.intro(langOption(code).language),
     t.driving,
     t.opening(plan.hook),
     ...(plan.news.length ? [t.news(plan.news)] : []),
@@ -260,8 +266,8 @@ function buildPrompt(l: Lang, plan: CallPlan): string {
   ].join("\n\n");
 }
 
-const templateFor = (l: Lang) => buildPrompt(l, BLANK_PLAN[l]);
-const exampleFor = (l: Lang) => buildPrompt(l, EXAMPLE_PLAN[l]);
+const templateFor = (code: string) => buildPrompt(code, BLANK_PLAN[templateLang(code)]);
+const exampleFor = (code: string) => buildPrompt(code, EXAMPLE_PLAN[templateLang(code)]);
 
 type AgendaItem = { n: number; text: string; priority: "today" | "later"; urgent: boolean };
 
@@ -307,13 +313,95 @@ function parseNews(text: string): string[] {
   return items;
 }
 
-const LANGS: Record<Lang, { label: string; language: string }> = {
-  da: { label: "Danish", language: "Danish" },
-  en: { label: "English", language: "English" },
+type LangOption = {
+  code: string; // ?lang= value
+  label: string; // dropdown text
+  language: string; // name used in the prompt: "Speak <language>."
+  locale: string; // STT language sent as languageCode
+  voice?: string; // TTS voice; unset = the agent default (Danish Christel)
 };
 
-// Native US English HD Omni voice (catalog: en-us-ava:DragonHDOmniLatestNeural).
-const ENGLISH_VOICE = "en-US-Ava:DragonHDOmniLatestNeural";
+// Every language the gpt-realtime model supports on Voice Live that also has an Azure STT locale and
+// TTS voice (Belarusian and Maori have neither). Voices are HD Omni from the Dragon HD Omni catalog;
+// Marathi and Urdu have no HD Omni voice, so they use standard neural voices.
+const HD = (name: string) => `${name}:DragonHDOmniLatestNeural`;
+const LANGS: LangOption[] = [
+  { code: "da", label: "Danish", language: "Danish", locale: "da" },
+  // Native US English voice and en-US STT, otherwise the Danish default voice speaks English with an accent.
+  { code: "en", label: "English (US)", language: "English", locale: "en-US", voice: HD("en-US-Ava") },
+  { code: "en-GB", label: "English (UK)", language: "British English", locale: "en-GB", voice: HD("en-GB-Sonia") },
+  { code: "af-ZA", label: "Afrikaans", language: "Afrikaans", locale: "af-ZA", voice: HD("af-ZA-Adri") },
+  { code: "ar-SA", label: "Arabic", language: "Arabic", locale: "ar-SA", voice: HD("ar-SA-Zariyah") },
+  { code: "hy-AM", label: "Armenian", language: "Armenian", locale: "hy-AM", voice: HD("hy-AM-Anahit") },
+  { code: "az-AZ", label: "Azerbaijani", language: "Azerbaijani", locale: "az-AZ", voice: HD("az-AZ-Banu") },
+  { code: "bs-BA", label: "Bosnian", language: "Bosnian", locale: "bs-BA", voice: HD("bs-BA-Vesna") },
+  { code: "bg-BG", label: "Bulgarian", language: "Bulgarian", locale: "bg-BG", voice: HD("bg-BG-Kalina") },
+  { code: "ca-ES", label: "Catalan", language: "Catalan", locale: "ca-ES", voice: HD("ca-ES-Joana") },
+  { code: "zh-CN", label: "Chinese (Mandarin)", language: "Mandarin Chinese", locale: "zh-CN", voice: HD("zh-CN-Xiaoxiao") },
+  { code: "hr-HR", label: "Croatian", language: "Croatian", locale: "hr-HR", voice: HD("hr-HR-Gabrijela") },
+  { code: "cs-CZ", label: "Czech", language: "Czech", locale: "cs-CZ", voice: HD("cs-CZ-Vlasta") },
+  { code: "nl-NL", label: "Dutch", language: "Dutch", locale: "nl-NL", voice: HD("nl-NL-Fenna") },
+  { code: "et-EE", label: "Estonian", language: "Estonian", locale: "et-EE", voice: HD("et-EE-Anu") },
+  { code: "fil-PH", label: "Filipino (Tagalog)", language: "Filipino", locale: "fil-PH", voice: HD("fil-PH-Blessica") },
+  { code: "fi-FI", label: "Finnish", language: "Finnish", locale: "fi-FI", voice: HD("fi-FI-Noora") },
+  { code: "fr-FR", label: "French (France)", language: "French", locale: "fr-FR", voice: HD("fr-FR-Denise") },
+  { code: "fr-CA", label: "French (Canada)", language: "Canadian French", locale: "fr-CA", voice: HD("fr-CA-Sylvie") },
+  { code: "gl-ES", label: "Galician", language: "Galician", locale: "gl-ES", voice: HD("gl-ES-Sabela") },
+  { code: "de-DE", label: "German", language: "German", locale: "de-DE", voice: HD("de-DE-Katja") },
+  { code: "el-GR", label: "Greek", language: "Greek", locale: "el-GR", voice: HD("el-GR-Athina") },
+  { code: "he-IL", label: "Hebrew", language: "Hebrew", locale: "he-IL", voice: HD("he-IL-Hila") },
+  { code: "hi-IN", label: "Hindi", language: "Hindi", locale: "hi-IN", voice: HD("hi-IN-Swara") },
+  { code: "hu-HU", label: "Hungarian", language: "Hungarian", locale: "hu-HU", voice: HD("hu-HU-Noemi") },
+  { code: "is-IS", label: "Icelandic", language: "Icelandic", locale: "is-IS", voice: HD("is-IS-Gudrun") },
+  { code: "id-ID", label: "Indonesian", language: "Indonesian", locale: "id-ID", voice: HD("id-ID-Gadis") },
+  { code: "it-IT", label: "Italian", language: "Italian", locale: "it-IT", voice: HD("it-IT-Elsa") },
+  { code: "ja-JP", label: "Japanese", language: "Japanese", locale: "ja-JP", voice: HD("ja-JP-Nanami") },
+  { code: "kn-IN", label: "Kannada", language: "Kannada", locale: "kn-IN", voice: HD("kn-IN-Sapna") },
+  { code: "kk-KZ", label: "Kazakh", language: "Kazakh", locale: "kk-KZ", voice: HD("kk-KZ-Aigul") },
+  { code: "ko-KR", label: "Korean", language: "Korean", locale: "ko-KR", voice: HD("ko-KR-SunHi") },
+  { code: "lv-LV", label: "Latvian", language: "Latvian", locale: "lv-LV", voice: HD("lv-LV-Everita") },
+  { code: "lt-LT", label: "Lithuanian", language: "Lithuanian", locale: "lt-LT", voice: HD("lt-LT-Ona") },
+  { code: "mk-MK", label: "Macedonian", language: "Macedonian", locale: "mk-MK", voice: HD("mk-MK-Marija") },
+  { code: "ms-MY", label: "Malay", language: "Malay", locale: "ms-MY", voice: HD("ms-MY-Yasmin") },
+  { code: "mr-IN", label: "Marathi", language: "Marathi", locale: "mr-IN", voice: "mr-IN-AarohiNeural" },
+  { code: "ne-NP", label: "Nepali", language: "Nepali", locale: "ne-NP", voice: HD("ne-NP-Hemkala") },
+  { code: "nb-NO", label: "Norwegian", language: "Norwegian Bokmål", locale: "nb-NO", voice: HD("nb-NO-Pernille") },
+  { code: "fa-IR", label: "Persian", language: "Persian", locale: "fa-IR", voice: HD("fa-IR-Dilara") },
+  { code: "pl-PL", label: "Polish", language: "Polish", locale: "pl-PL", voice: HD("pl-PL-Agnieszka") },
+  { code: "pt-BR", label: "Portuguese (Brazil)", language: "Brazilian Portuguese", locale: "pt-BR", voice: HD("pt-BR-Francisca") },
+  { code: "pt-PT", label: "Portuguese (Portugal)", language: "European Portuguese", locale: "pt-PT", voice: HD("pt-PT-Raquel") },
+  { code: "ro-RO", label: "Romanian", language: "Romanian", locale: "ro-RO", voice: HD("ro-RO-Alina") },
+  { code: "ru-RU", label: "Russian", language: "Russian", locale: "ru-RU", voice: HD("ru-RU-Svetlana") },
+  { code: "sr-RS", label: "Serbian", language: "Serbian", locale: "sr-RS", voice: HD("sr-RS-Sophie") },
+  { code: "sk-SK", label: "Slovak", language: "Slovak", locale: "sk-SK", voice: HD("sk-SK-Viktoria") },
+  { code: "sl-SI", label: "Slovenian", language: "Slovenian", locale: "sl-SI", voice: HD("sl-SI-Petra") },
+  { code: "es-ES", label: "Spanish (Spain)", language: "Spanish", locale: "es-ES", voice: HD("es-ES-Elvira") },
+  { code: "es-MX", label: "Spanish (Mexico)", language: "Mexican Spanish", locale: "es-MX", voice: HD("es-MX-Dalia") },
+  { code: "sw-KE", label: "Swahili", language: "Swahili", locale: "sw-KE", voice: HD("sw-KE-Zuri") },
+  { code: "sv-SE", label: "Swedish", language: "Swedish", locale: "sv-SE", voice: HD("sv-SE-Sofie") },
+  { code: "ta-IN", label: "Tamil", language: "Tamil", locale: "ta-IN", voice: HD("ta-IN-Pallavi") },
+  { code: "th-TH", label: "Thai", language: "Thai", locale: "th-TH", voice: HD("th-TH-Premwadee") },
+  { code: "tr-TR", label: "Turkish", language: "Turkish", locale: "tr-TR", voice: HD("tr-TR-Emel") },
+  { code: "uk-UA", label: "Ukrainian", language: "Ukrainian", locale: "uk-UA", voice: HD("uk-UA-Polina") },
+  { code: "ur-IN", label: "Urdu", language: "Urdu", locale: "ur-IN", voice: "ur-IN-GulNeural" },
+  { code: "vi-VN", label: "Vietnamese", language: "Vietnamese", locale: "vi-VN", voice: HD("vi-VN-HoaiMy") },
+  { code: "cy-GB", label: "Welsh", language: "Welsh", locale: "cy-GB", voice: HD("cy-GB-Nia") },
+];
+
+// Accepts the exact code or a bare language ("de" finds de-DE), case-insensitive.
+function findLang(value: unknown): LangOption | undefined {
+  const q = String(value ?? "").trim().toLowerCase();
+  if (!q) return undefined;
+  return (
+    LANGS.find((l) => l.code.toLowerCase() === q) ??
+    LANGS.find((l) => l.locale.toLowerCase().startsWith(`${q}-`))
+  );
+}
+const langOption = (code: string) => findLang(code) ?? LANGS[0];
+const templateLang = (code: string): Lang => (code === "da" ? "da" : "en");
+// HD Omni styles are documented for English and lab-tested for Danish; other languages get no style.
+const voiceStyleFor = (l: LangOption) =>
+  /^(da|en)\b/.test(l.locale) ? undefined : "";
 
 // The Cowork task that drives this page; the copy button puts it on the clipboard with the current URL.
 function coworkPrompt(): string {
@@ -355,7 +443,7 @@ async function copyCoworkPrompt() {
 
 const countryCode = ref(String(route.query.cc ?? "45").replace(/[^\d]/g, "") || "45");
 const phone = ref(String(route.query.phone ?? ""));
-const lang = ref<Lang>(route.query.lang === "en" ? "en" : "da");
+const lang = ref<string>(findLang(route.query.lang)?.code ?? "da");
 const instructions = ref(
   route.query.instructions
     ? String(route.query.instructions)
@@ -363,6 +451,11 @@ const instructions = ref(
       ? exampleFor(lang.value)
       : "",
 );
+// Switching language re-renders an untouched example or template, so its "Speak <language>" line follows the dropdown.
+watch(lang, (next, prev) => {
+  if (instructions.value === exampleFor(prev)) instructions.value = exampleFor(next);
+  else if (instructions.value === templateFor(prev)) instructions.value = templateFor(next);
+});
 
 const status = ref<PageStatus>("idle");
 const errorMessage = ref("");
@@ -480,6 +573,7 @@ async function placeCall() {
   status.value = "placing";
   errorMessage.value = "";
   snapshot.value = null;
+  const l = langOption(lang.value);
   try {
     const res = await $fetch<{
       success: boolean;
@@ -492,10 +586,10 @@ async function placeCall() {
         phoneNumber: phone.value,
         countryCode: countryCode.value,
         prompt: instructions.value,
-        language: LANGS[lang.value].language,
-        // A native English voice and en-US STT, otherwise the Danish default voice speaks English with an accent.
-        languageCode: lang.value === "en" ? "en-US" : lang.value,
-        ...(lang.value === "en" ? { voice: ENGLISH_VOICE } : {}),
+        language: l.language,
+        languageCode: l.locale,
+        ...(l.voice ? { voice: l.voice } : {}),
+        voiceStyle: voiceStyleFor(l),
       },
     });
     if (!res.success || !res.contextId) {
@@ -650,7 +744,7 @@ const field =
               :class="[field, 'mt-2']"
               :disabled="isBusy"
             >
-              <option v-for="(l, code) in LANGS" :key="code" :value="code">
+              <option v-for="l in LANGS" :key="l.code" :value="l.code">
                 {{ l.label }}
               </option>
             </select>

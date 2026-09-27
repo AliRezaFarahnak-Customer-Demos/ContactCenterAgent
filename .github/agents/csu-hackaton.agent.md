@@ -22,7 +22,7 @@ The page is deliberately unbranded: plain white/blue, system font, neutral favic
 | `#cowork-page` | Root. Attributes `data-call-status` (`idle`, `placing`, `ringing`, `in_progress`, `ended`, `completed`, `error`), `data-call-done` (`true`/`false`), `data-context-id` |
 | `[data-testid=country-code]` | Country code without `+`, default `45` |
 | `[data-testid=phone-number]` | Local number |
-| `[data-testid=call-language]` | `<select>` with `da` (Danish, default) or `en` (English) |
+| `[data-testid=call-language]` | `<select>` with 59 call languages: `da` (Danish, default), `en` (English US) and a BCP-47 locale for the rest (`en-GB`, `de-DE`, `ja-JP`, …). Each has its own STT locale and native voice. Only Danish has its own prompt template; every other language uses the English template with a "Speak <language>" rule |
 | `[data-testid=system-instructions]` | System prompt. A line `Navn: <first name>` replaces `CustomerName` in the greeting |
 | `[data-testid=insert-template]` | "Insert template". Inserts the TTS-safe template (security check plus Today / Can wait sections) in the selected language |
 | `[data-testid=agenda]` | "Today's plan" preview parsed from the instructions. `[data-testid=agenda-item]` per numbered task with `data-priority` (`today`/`later`) and `data-urgent` |
@@ -36,9 +36,9 @@ The page is deliberately unbranded: plain white/blue, system font, neutral favic
 | `[data-testid=action]` | One per action. `data-action-type` (`close_report`, `update_report`, `reply_email`, `reply_teams`, `send_email`, `send_teams`, `create_task`, `other`), `data-action-target` (e.g. `Fjordvik Logistics`), `data-action-status` (`ready`/`postponed`/`open`), `data-action-priority` (`today`/`later`). Text in `[data-testid=action-content]` is ready to paste |
 | `[data-testid=result-json]` | Full result as JSON, including `actions[]`; the easiest thing for Cowork to read |
 
-Query parameters: `?phone=`, `?cc=`, `?lang=` (`da`/`en`) and `?instructions=` prefill the form. `?example=1` loads the fictional demo scenario (see below) unless `?instructions=` is given. `?call=<contextId>` resumes polling or shows an existing result.
+Query parameters: `?phone=`, `?cc=`, `?lang=` (`da`, `en`, a locale such as `de-DE`, or a bare language such as `de`) and `?instructions=` prefill the form. `?example=1` loads the fictional demo scenario (see below) unless `?instructions=` is given. `?call=<contextId>` resumes polling or shows an existing result.
 
-`[data-testid=insert-example]` ("Load example") inserts the same fictional scenario in the selected language.
+`[data-testid=insert-example]` ("Load example") inserts the same fictional scenario in the selected language. Switching the language re-renders an untouched example or template.
 
 ## System instructions format
 

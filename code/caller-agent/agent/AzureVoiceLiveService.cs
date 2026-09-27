@@ -314,9 +314,9 @@ namespace CallAutomation.AzureAI.VoiceLive
                             prefix_padding_ms = vadPrefixPaddingMs,
                             silence_duration_ms = vadSilenceMs,
                             auto_truncate = true,
-                            appended_text_after_truncation = m_languageCode?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true
-                                ? " [The caller interrupted me here.]"
-                                : ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.TruncationNotice
+                            appended_text_after_truncation = IsDanishOrDefault(m_languageCode)
+                                ? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.TruncationNotice
+                                : " [The caller interrupted me here.]"
                         },
                     // No max_response_output_tokens cap — danish-voice-lab doesn't set one and
                     // we want identical behaviour. The system prompt's "1-2 sentences" rule
@@ -437,7 +437,7 @@ namespace CallAutomation.AzureAI.VoiceLive
                         ?? ContactCenterAgent.Shared.VoiceLive.VoiceLiveDefaults.DefaultVoiceLocale;
                     // A per-call voice from another language (e.g. "en-US-Ava:...") must speak its own
                     // locale; pinning it to the da-DK default gives English with a Danish accent.
-                    var nameLocale = System.Text.RegularExpressions.Regex.Match(voiceName, @"^[a-z]{2}-[A-Z]{2}(?=-)").Value;
+                    var nameLocale = System.Text.RegularExpressions.Regex.Match(voiceName, @"^[a-z]{2,3}-[A-Z]{2}(?=-)").Value;
                     var foreignVoice = nameLocale.Length > 0 && !string.IsNullOrWhiteSpace(voiceLocale)
                         && !string.Equals(nameLocale, voiceLocale, StringComparison.OrdinalIgnoreCase);
                     if (foreignVoice)
@@ -464,6 +464,10 @@ namespace CallAutomation.AzureAI.VoiceLive
 
             return voice;
         }
+
+        /// <summary>No language code means the Danish default.</summary>
+        private static bool IsDanishOrDefault(string? languageCode) =>
+            string.IsNullOrEmpty(languageCode) || languageCode.StartsWith("da", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Build the input_audio_transcription config for the Voice Live session.
@@ -512,11 +516,15 @@ namespace CallAutomation.AzureAI.VoiceLive
                 // Config wins; otherwise fall back to the shared Norlys phrase list so caller-agent
                 // and danish-voice-lab always send the same vocabulary boost to STT.
                 var phrases = configuration.GetSection("Transcription:PhraseList").Get<string[]>();
-                if (phrases is null || phrases.Length == 0)
+                if ((phrases is null || phrases.Length == 0) && IsDanishOrDefault(lang))
                 {
+                    // The shared list is Danish Norlys vocabulary; in other languages it only biases STT toward wrong words.
                     phrases = ContactCenterAgent.Shared.VoiceLive.NorlysDanishPhrases.All.ToArray();
                 }
-                config["phrase_list"] = phrases;
+                if (phrases is { Length: > 0 })
+                {
+                    config["phrase_list"] = phrases;
+                }
             }
             else
             {
